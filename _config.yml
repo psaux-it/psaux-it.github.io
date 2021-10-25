@@ -3,4 +3,4 @@ title: [Woo-Aras Integration]
 show_downloads: ["true"]
 github:
   zip_url: https://github.com/hsntgm/woocommerce-aras-kargo/archive/refs/tags/v1.0.9-alpha.zip
-  tarball_url: https://github.com/hsntgm/woocommerce-aras-kargo/archive/refs/tags/v1.0.9-alpha.tar.gz
+  tar_url: https://github.com/hsntgm/woocommerce-aras-kargo/archive/refs/tags/v1.0.9-alpha.tar.gz
