@@ -41,7 +41,7 @@ setup_terminal || echo > /dev/null
 
 # Early check bash exists and met version requirement
 # This function written in POSIX for portability but rest of script is bashify
-detect_bash5 () {
+detect_bash () {
   local my_bash
   my_bash="$(command -v bash 2> /dev/null)"
   if [ -z "${BASH_VERSION}" ]; then
@@ -57,7 +57,7 @@ detect_bash5 () {
 
   if [ -z "${bash_ver}" ]; then
     return 1
-  elif [ $((bash_ver)) -lt 5 ]; then
+  elif [ $((bash_ver)) -lt 4 ]; then
     return 1
   fi
   return 0
@@ -74,8 +74,8 @@ test_connection () {
   fi
 }
 
-if ! detect_bash5; then
-  echo -e "\n${red}*${reset} ${red}FATAL ERROR: Need BASH v5+${reset}"
+if ! detect_bash; then
+  echo -e "\n${red}*${reset} ${red}FATAL ERROR: Need BASH v4+${reset}"
   echo -e "${cyan}${m_tab}#####################################################${reset}\n"
   exit 1
 fi
@@ -109,6 +109,11 @@ fatal () {
   printf >&2 "\n${m_tab}%s ABORTED %s %s \n\n" "${TPUT_BGRED}${TPUT_WHITE}${TPUT_BOLD}" "${TPUT_RESET}" "${*}"
   exit 1
 }
+
+# We need column command from util-linux package not bsdmainutils
+if ! column -V 2>/dev/null | grep -q "util-linux"; then
+  fatal "Unsupported command, we need 'column' command from util-linux package"
+fi
 
 done_ () {
   printf >&2 "\n${m_tab}${TPUT_BGGREEN}${TPUT_WHITE}${TPUT_BOLD} DONE ${TPUT_RESET} ${*}\n"
@@ -347,17 +352,12 @@ autodetect_distribution () {
 # Package lists for distributions
 get_package_list () {
   declare -A pkg_make=(
-    ['centos']="@'Development Tools'"
-    ['fedora']="@'Development Tools'"
-    ['rhel']="@'Development Tools'"
     ['ubuntu']="build-essential"
     ['debian']="build-essential"
     ['arch']="base-devel"
     ['manjaro']="base-devel"
-    ['suse']=""
-    ['opensuse-leap']=""
-    ['opensuse-tumbleweed']=""
-    ['gentoo']=""
+    ['gentoo']="sys-devel/make"
+    ['default']=""
   )
 
   declare -A pkg_curl=(
@@ -474,15 +474,22 @@ pre_start () {
     fi
 
     if (( ${#missing_deps[@]} )); then
+      shopt -s extglob
       get_package_list
       echo -e "\n${green}* ${magenta}STAGE-1 > PACKAGE INSTALLATION${reset}"
       echo "${cyan}${m_tab}+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+--->${reset}"
-      fixed_packages="${packages[@]}"
+      fixed_packages=( "${packages[@]}" )
+      if [[ "${missing_deps[@]}" =~ "make" ]]; then
+        if [[ "${distribution}" != @(ubuntu|debian|arch|manjaro) ]]; then
+          fixed_packages+=( "make" )
+        fi
+      fi
+      my_fixed_packages="${fixed_packages[@]}"
       {
       if [[ "${missing_deps[@]}" =~ "perl_text_fuzzy" ]]; then
-        echo "${green}Missing_Packages: ${fixed_packages//${IFS:0:1}/,},Text::Fuzzy${reset}"
+        echo "${green}Missing_Packages: ${my_fixed_packages//${IFS:0:1}/,},Text::Fuzzy${reset}"
       else
-        echo "${green}Missing_Packages: ${fixed_packages//${IFS:0:1}/,}${reset}"
+        echo "${green}Missing_Packages: ${my_fixed_packages//${IFS:0:1}/,}${reset}"
       fi
       } | column -o '       ' -t -s ' ' | sed 's/^/  /'
     else
@@ -621,6 +628,10 @@ my_wait () {
 # Validate installed packages silently
 validate_centos () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if ! $my_yum list installed ${packagename} >/dev/null 2>&1; then
@@ -631,6 +642,10 @@ validate_centos () {
 
 validate_rhel () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if [[ "${my_yum}" ]]; then
@@ -645,6 +660,10 @@ validate_rhel () {
 
 validate_fedora () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if ! $my_dnf list installed ${packagename} >/dev/null 2>&1; then
@@ -742,6 +761,10 @@ validate_manjaro () {
 
 validate_suse () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if [[ "${packagename}" == "php" ]]; then
@@ -760,6 +783,10 @@ validate_suse () {
 
 validate_opensuse-leap () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if [[ "${packagename}" == "php" ]]; then
@@ -778,6 +805,10 @@ validate_opensuse-leap () {
 
 validate_opensuse-tumbleweed () {
   fail=()
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    packages+=( "make" )
+  fi
+
   for packagename in "${packages[@]}"
   do
     if [[ "${packagename}" == "php" ]]; then
@@ -862,12 +893,16 @@ pre_start
 # +-----+-----+--->
 
 install_centos () {
+  local group
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    group="@'Development Tools'"
+  fi
   opts="-yq install"
   repo="update"
   echo n | $my_yum ${repo} &>/dev/null &
   my_wait "SYNCING REPOSITORY"
   replace_suc "REPOSITORIES SYNCED"
-  $my_yum ${opts} "${packages[@]}" &>/dev/null &
+  $my_yum ${opts} "${packages[@]}" ${group} &>/dev/null &
   post_ops "INSTALLING PACKAGES"
 }
 
@@ -882,13 +917,40 @@ install_debian () {
 }
 
 install_ubuntu () {
+  # These are ubuntu based distro extra repositories
+  local multiverse_enabled universe_enabled restricted_enabled
+  multiverse_enabled=0
+  universe_enabled=0
+  restricted_enabled=0
   opts="-yq install"
   repo="update"
+  if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "multiverse"; then
+    add-apt-repository multiverse &>/dev/null
+    multiverse_enabled=1
+  fi
+  if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "universe"; then
+    add-apt-repository universe &>/dev/null
+    universe_enabled=1
+  fi
+  if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "restricted"; then
+    add-apt-repository restricted &>/dev/null
+    restricted_enabled=1
+  fi
   $my_apt_get ${repo} &>/dev/null &
   my_wait "SYNCING REPOSITORY"
   replace_suc "REPOSITORIES SYNCED"
   $my_apt_get ${opts} "${packages[@]}" &>/dev/null &
   post_ops "INSTALLING PACKAGES"
+  if [[ "${multiverse_enabled}" -eq 1 ]]; then
+    add-apt-repository --remove multiverse &>/dev/null
+  fi
+  if [[ "${universe_enabled}" -eq 1 ]]; then
+    add-apt-repository --remove universe &>/dev/null
+  fi
+  if [[ "${restricted_enabled}" -eq 1 ]]; then
+    add-apt-repository --remove restricted &>/dev/null
+  fi
+  $my_apt_get ${repo} &>/dev/null
 }
 
 install_gentoo () {
@@ -972,23 +1034,31 @@ install_opensuse-tumbleweed () {
 }
 
 install_fedora () {
+  local group
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    group="@'Development Tools'"
+  fi
   opts="-yq --setopt=strict=0 install"
   repo="distro-sync"
   echo n | $my_dnf ${repo} &>/dev/null &
   my_wait "SYNCING REPOSITORY"
   replace_suc "REPOSITORIES SYNCED"
-  $my_dnf ${opts} "${packages[@]}" &>/dev/null &
+  $my_dnf ${opts} "${packages[@]}" ${group} &>/dev/null &
   post_ops "INSTALLING PACKAGES"
 }
 
 install_rhel () {
+  local group
+  if [[ "${missing_deps[@]}" =~ "make" ]]; then
+    group="@'Development Tools'"
+  fi
   if [[ "${my_yum}" ]]; then
     opts="-yq install"
     repo="update"
     echo n | $my_yum ${repo} &>/dev/null &
     my_wait "SYNCING REPOSITORY"
     replace_suc "REPOSITORIES SYNCED"
-    $my_yum ${opts} "${packages[@]}" &>/dev/null &
+    $my_yum ${opts} "${packages[@]}" ${group} &>/dev/null &
     post_ops "INSTALLING PACKAGES"
   else
     opts="-yq --setopt=strict=0 install"
@@ -996,7 +1066,7 @@ install_rhel () {
     echo n | $my_dnf ${repo} &>/dev/null &
     my_wait "SYNCING REPOSITORY"
     replace_suc "REPOSITORIES SYNCED "
-    $my_dnf ${opts} "${packages[@]}" &>/dev/null &
+    $my_dnf ${opts} "${packages[@]}" ${group} &>/dev/null &
     post_ops "INSTALLING PACKAGES"
   fi
 }
