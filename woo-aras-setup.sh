@@ -113,22 +113,34 @@ fatal () {
   exit 1
 }
 
+get_column () {
+  {
+  if command -v curl > /dev/null 2>&1; then
+    curl -q -sSL https://psaux-it.github.io/column2
+  elif command -v wget > /dev/null 2>&1; then
+    wget -qk https://psaux-it.github.io/column2
+  else
+    fatal "Install curl or wget, unsupported command, we need 'column' command from util-linux package"
+  fi
+  chmod +x column2
+  [[ ! -d "/usr/local/bin" ]] && mkdir -p /usr/local/bin
+  mv column2 /usr/local/bin/
+  } >/dev/null 2>&1
+  
+  [[ -f "/usr/local/bin/column2" ]] && my_column="/usr/local/bin/column2" || fatal "Unsupported command, we need 'column' command from util-linux package"
+}
+
 # We need column command from util-linux package, not from bsdmainutils
 # Debian based distributions affected by this bug
 # https://bugs.launchpad.net/ubuntu/+source/util-linux/+bug/1705437
-if ! column -V 2>/dev/null | grep -q "util-linux"; then
-  {
-  if command -v curl > /dev/null 2>&1; then
-    curl -q -sSL https://hsntgm.github.io/column2
+if command -v column > /dev/null 2>&1; then
+  if ! column -V 2>/dev/null | grep -q "util-linux"; then
+    get_column
   else
-    wget -qk https://hsntgm.github.io/column2
+    my_column=$(command -v column 2>/dev/null)
   fi
-  chmod +x column2
-  mv column2 /usr/local/bin/
-  } >/dev/null 2>&1
-  [[ -f "/usr/local/bin/column2" ]] && my_column="/usr/local/bin/column2" || fatal "Unsupported command, we need 'column' command from util-linux package"
 else
-  my_column=$(command -v column 2>/dev/null)
+  get_column  
 fi
 
 done_ () {
@@ -595,7 +607,7 @@ get_jq () {
       cd /tmp
       wget -q --no-check-certificate -O jq ${jq_url}
       chmod +x jq
-      mkdir -p /usr/local/bin
+      [[ ! -d "/usr/local/bin" ]] && mkdir -p /usr/local/bin
       mv jq /usr/local/bin/jq
       } >/dev/null 2>&1
     elif command -v curl >/dev/null 2>&1; then
@@ -603,7 +615,7 @@ get_jq () {
       cd /tmp
       curl -sLk ${jq_url} -o jq
       chmod +x jq
-      mkdir -p /usr/local/bin
+      [[ ! -d "/usr/local/bin" ]] && mkdir -p /usr/local/bin
       mv jq /usr/local/bin/jq
       } >/dev/null 2>&1
     fi
@@ -1296,5 +1308,5 @@ else
   sudo -u "${new_user}" --preserve-env="${my_env}" -s /bin/bash -c 'exec < /dev/tty; sudo --preserve-env='"${my_env}"' '"${working_path}"'/woocommerce-aras-cargo.sh --setup'
 fi
 
-# And lastly we exit
+# And lastly we exit.
 exit $?
