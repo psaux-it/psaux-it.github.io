@@ -2,5 +2,5 @@ theme: jekyll-theme-merlot
 title: [Woo-Aras Integration]
 show_downloads: ["true"]
 github:
-  zip_url: https://github.com/hsntgm/woocommerce-aras-kargo/archive/refs/tags/v2.1.1.zip
-  tar_url: https://github.com/hsntgm/woocommerce-aras-kargo/archive/refs/tags/v2.1.1.tar.gz
+  zip_url: https://github.com/psaux-it/woocommerce-aras-kargo/archive/refs/tags/v2.1.1.zip
+  tar_url: https://github.com/psaux-it/woocommerce-aras-kargo/archive/refs/tags/v2.1.1.tar.gz
