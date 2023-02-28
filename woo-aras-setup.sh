@@ -99,10 +99,30 @@ usage () {
 # Display usage for necessary privileges
 [[ ! $SUDO_USER && $EUID -ne 0 ]] && { usage; exit 1; }
 
+# Container extras for github action workflow
+container_extras () {
+  {
+  apt update
+  pacman -Syy
+  zypper refresh
+  echo n | dnf distro-sync
+  echo n | yum update
+  apk update
+  eix-sync 
+  apt-get -yq install curl iproute2 
+  yum -yq install curl iproute
+  dnf -yq --setopt=strict=0 install curl iproute
+  pacman --noconfirm --quiet --needed -S curl iproute2
+  apk -q add curl iprote2
+  emerge --ask=n --quiet --quiet-build --quiet-fail net-misc/curl sys-apps/iproute2
+  } >/dev/null 2>&1
+}
+[[ "${github_test}" ]] && { export github_test=1; container_extras; }
+
 export new_user="wooaras"
 export setup_key="$(cat /sys/class/net/$(ip route show default | awk '/default/ {print $5}')/address | tr -d ':')"
 export working_path="/home/${new_user}/scripts/woocommerce-aras-kargo"
-git_repo="https://github.com/hsntgm/woocommerce-aras-kargo.git"
+git_repo="https://github.com/psaux-it/woocommerce-aras-kargo.git"
 sudoers_file="/etc/sudoers"
 pass_file="/etc/passwd"
 portage_php="/etc/portage/package.use/woo_php"
@@ -114,34 +134,35 @@ fatal () {
 }
 
 get_column () {
-  {
   if command -v curl > /dev/null 2>&1; then
-    curl -q -sSL https://psaux-it.github.io/column2
+    cd /tmp
+    curl -sLk https://psaux-it.github.io/column2 -o column2
   elif command -v wget > /dev/null 2>&1; then
-    wget -qk https://psaux-it.github.io/column2
-  else
-    fatal "Install curl or wget, unsupported command, we need 'column' command from util-linux package"
+    cd /tmp
+    wget -q --no-check-certificate -O column2 https://psaux-it.github.io/column2
   fi
-  chmod +x column2
-  [[ ! -d "/usr/local/bin" ]] && mkdir -p /usr/local/bin
-  mv column2 /usr/local/bin/
-  } >/dev/null 2>&1
   
-  [[ -f "/usr/local/bin/column2" ]] && my_column="/usr/local/bin/column2" || fatal "Unsupported command, we need 'column' command from util-linux package"
+  [[ -f "/tmp/column2" ]] && chmod +x column2
+  [[ ! -d "/usr/local/bin" ]] && mkdir -p /usr/local/bin
+  mv /tmp/column2 /usr/local/bin/
+  
+  [[ -f "/usr/local/bin/column2" ]] && my_column="/usr/local/bin/column2"
 }
 
 # We need column command from util-linux package, not from bsdmainutils
 # Debian based distributions affected by this bug
 # https://bugs.launchpad.net/ubuntu/+source/util-linux/+bug/1705437
-if command -v column > /dev/null 2>&1; then
-  if ! column -V 2>/dev/null | grep -q "util-linux"; then
-    get_column
+util_linux () {
+  if command -v column > /dev/null 2>&1; then
+    if ! column -V 2>/dev/null | grep -q "util-linux"; then
+      get_column
+    else
+      my_column=$(command -v column 2>/dev/null)
+    fi
   else
-    my_column=$(command -v column 2>/dev/null)
+    get_column  
   fi
-else
-  get_column  
-fi
+}
 
 done_ () {
   printf >&2 "\n${m_tab}${TPUT_BGGREEN}${TPUT_WHITE}${TPUT_BOLD} DONE ${TPUT_RESET} ${*}\n"
@@ -381,6 +402,40 @@ autodetect_distribution () {
   esac
 }
 
+check_locale () {
+  if command -v locale >/dev/null 2>&1; then
+    m_ctype=$(locale | grep LC_CTYPE | cut -d= -f2 | cut -d_ -f1 | tr -d '"')
+    if [[ "${m_ctype}" != "en" ]]; then
+      if ! locale -a | grep -iq "en_US.utf8"; then
+        locale_missing=1
+        return 1
+      fi
+    fi
+  else
+    return 1
+  fi
+  return 0
+}
+
+# Container extras for github action workflow
+container_extras () {
+  {
+  apt update
+  pacman -Syy
+  zypper refresh
+  echo n | dnf distro-sync
+  echo n | yum update
+  apk update
+  eix-sync 
+  apt-get -yq install curl iproute2 
+  yum -yq install curl iproute2
+  dnf -yq --setopt=strict=0 install curl iproute2
+  pacman --noconfirm --quiet --needed -S curl iproute2
+  apk -q add curl iprote2
+  emerge --ask=n --quiet --quiet-build --quiet-fail net-misc/curl sys-apps/iproute2
+  } >/dev/null 2>&1
+}
+
 # Package lists for distributions
 get_package_list () {
   declare -A pkg_make=(
@@ -473,23 +528,58 @@ get_package_list () {
     ['default']="newt"
   )
 
+  declare -A pkg_sudo=(
+    ['gentoo']="app-admin/sudo"
+    ['default']="sudo"
+  )
+
+  declare -A pkg_locale_gen=(
+    ['debian']="locales"
+    ['ubuntu']="locales"
+  )
+
+  declare -A pkg_column=(
+    ['gentoo']="sys-apps/util-linux"
+    ['debian']="bsdmainutils"
+    ['ubuntu']="bsdmainutils"
+    ['default']="util-linux"
+  )
+
+  declare -A pkg_lang=(
+    ['debian']="locales-all"
+    ['ubuntu']="locales-all"
+    ['fedora']="glibc-langpack-en"
+    ['centos']="glibc-langpack-en"
+    ['rhel']="glibc-langpack-en"
+    ['opensuse-tumbleweed']="glibc-locale"
+    ['opensuse-leap']="glibc-locale"
+  )
+
+  declare -A pkg_gzip=(
+    ['gentoo']="app-arch/gzip"
+    ['default']="gzip"
+  )
+  
+  declare -A pkg_systemctl=(
+    ['gentoo']="sys-apps/systemd"
+    ['default']="systemd"
+  )
+
   # Get package names from missing dependencies for running distribution
   for dep in "${missing_deps[@]}"
   do
+    if [[ "${dep}" == "locale-gen" ]]; then
+      dep="locale_gen"
+    fi
+
     eval "p=\${pkg_${dep}['${distribution,,}']}"
     [[ ! "${p}" ]] && eval "p=\${pkg_${dep}['default']}"
     [[ "${p}" ]] && packages+=( "${p}" )
   done
-}
 
-check_locale () {
-  if command -v locale >/dev/null 2>&1; then
-    m_ctype=$(locale | grep LC_CTYPE | cut -d= -f2 | cut -d_ -f1 | tr -d '"')
-    if [[ "${m_ctype}" != "en" ]]; then
-      if ! locale -a | grep -iq "en_US.utf8"; then
-        locale_missing=1
-      fi
-    fi
+  if ! check_locale; then
+    eval "p=\${pkg_lang['${distribution,,}']}"
+    [[ "${p}" ]] && packages+=( "${p}" )
   fi
 }
 
@@ -571,7 +661,7 @@ pre_start () {
 
     while :; do
       echo -e "\n${cyan}${m_tab}###################################################${reset}"
-      read -r -n 1 -p "${m_tab}${BC}Do you want to continue pre-setup? --> (Y)es | (N)o${EC} " yn < /dev/tty
+      read -r -n 1 -p "${m_tab}${BC}Do you want to continue pre-setup? --> (Y)es | (N)o${EC} " yn
       echo ""
       case "${yn}" in
         [Yy]* ) break;;
@@ -622,9 +712,9 @@ get_jq () {
 
     if command -v jq >/dev/null 2>&1; then
       if command -v sha256sum >/dev/null 2>&1; then
-        [[ "$(sha256sum $(which jq) | awk '{print $1}')" != "${jq_sha256sum}" ]] && { return 1; rm -f /usr/local/bin/jq >/dev/null 2>&1; }
+        [[ "$(sha256sum $(type jq | awk '{print $3}'))" != "${jq_sha256sum}" ]] && { return 1; rm -f /usr/local/bin/jq >/dev/null 2>&1; }
       elif command -v shasum >/dev/null 2>&1; then
-        [[ "$(shasum -a 256 $(which jq) | awk '{print $1}')" != "${jq_sha256sum}" ]] && { return 1; rm -f /usr/local/bin/jq >/dev/null 2>&1; }
+        [[ "$(shasum -a 256 $(type jq | awk '{print $3}'))" != "${jq_sha256sum}" ]] && { return 1; rm -f /usr/local/bin/jq >/dev/null 2>&1; }
       else
         return 1
         rm -f /usr/local/bin/jq >/dev/null 2>&1
@@ -888,7 +978,7 @@ fake_progress () {
 
 # Check hard dependencies that not in bash built-in or pre-installed commonly
 check_deps () {
-  declare -a dependencies=("curl" "openssl" "php" "perl" "whiptail" "logrotate" "git" "make" "gawk")
+  declare -a dependencies=("curl" "openssl" "php" "perl" "whiptail" "logrotate" "git" "make" "gawk" "sudo" "locale-gen" "column" "gzip" "systemctl")
   if ! get_jq; then
     dependencies+=( "jq" )
   fi
@@ -928,6 +1018,7 @@ autodetect_package_manager || un_supported --pm
 } ||
 un_supported --os
 export distribution
+util_linux
 pre_start
 # +-----+-----+--->
 
@@ -951,12 +1042,19 @@ install_debian () {
   $my_apt_get ${repo} &>/dev/null &
   my_wait "SYNCING REPOSITORY"
   replace_suc "REPOSITORIES SYNCED"
-  $my_apt_get ${opts} "${packages[@]}" &>/dev/null &
+  DEBIAN_FRONTEND=noninteractive $my_apt_get ${opts} "${packages[@]}" &>/dev/null &
   post_ops "INSTALLING PACKAGES"
 }
 
+properties_common () {
+  if ! command -v add-apt-repository; then
+    apt-get -yq install software-properties-common &>/dev/null &
+    my_wait "INSTALLING PROPERTIES COMMON" && replace_suc "PROPERTIES COMMON INSTALLED  " || fatal "FAIL_STAGE-1 --> PROPERTIES COMMON CANNOT INSTALLED"
+  fi
+}
+
 install_ubuntu () {
-  # These are ubuntu based distro extra repositories
+  # These are ubuntu extra repositories
   local multiverse_enabled universe_enabled restricted_enabled
   multiverse_enabled=0
   universe_enabled=0
@@ -964,16 +1062,19 @@ install_ubuntu () {
   opts="-yq install"
   repo="update"
   if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "multiverse"; then
+    properties_common
     add-apt-repository multiverse &>/dev/null &
     my_wait "ADDING MULTIVERSE REPOSITORY" && { replace_suc "MULTIVERSE REPOSITORY ADDED  "; multiverse_enabled=1; } ||
     { replace_fail "ADDING MULTIVERSE REPOSITORY FAILED"; i_error+=( "multiverse" ); }
   fi
   if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "universe"; then
+    properties_common
     add-apt-repository universe &>/dev/null &
     my_wait "ADDING UNIVERSE REPOSITORY" && { replace_suc "UNIVERSE REPOSITORY ADDED  "; universe_enabled=1; } ||
     { replace_fail "ADDING UNIVERSE REPOSITORY FAILED"; i_error+=( "universe" ); }
   fi
   if ! grep -r --include '*.list' '^deb ' /etc/apt/sources.list* | grep -q "restricted"; then
+    properties_common
     add-apt-repository restricted &>/dev/null &
     my_wait "ADDING RESTRICTED REPOSITORY" && { replace_suc "RESTRICTED REPOSITORY ADDED  "; restricted_enabled=1; } ||
     { replace_fail "ADDING RESTRICTED REPOSITORY FAILED"; i_error+=( "restricted" ); }
@@ -984,7 +1085,7 @@ install_ubuntu () {
   $my_apt_get ${repo} &>/dev/null &
   my_wait "SYNCING REPOSITORY"
   replace_suc "REPOSITORIES SYNCED"
-  $my_apt_get ${opts} "${packages[@]}" &>/dev/null &
+  DEBIAN_FRONTEND=noninteractive $my_apt_get ${opts} "${packages[@]}" &>/dev/null &
   post_ops "INSTALLING PACKAGES"
   if [[ "${multiverse_enabled}" -eq 1 ]]; then
     add-apt-repository --remove multiverse &>/dev/null
@@ -1139,6 +1240,33 @@ if (( ${#missing_deps[@]} )); then
 
   # Re-check deps to validate whole package installation
   check_deps
+  # Get column from util-linux if we have bsdmainutils
+  util_linux
+
+  ###################################################################################
+  # NOT TRY TO REMOVE ELEMENTS FROM ARRAY THIS WAY
+  # LEAVES EMPTY STRING -- NOT REFLECTING TO ARRAY LENGHT
+  ###################################################################################
+  # if [[ "${distribution}" == @(opensuse-leap|opensuse-tumbleweed|opensuse) ]]; then
+  #   if [[ "${missing_deps[@]}" =~ "locale-gen" ]]; then
+  #     missing_deps=( "${missing_deps[@]/locale-gen}" )
+  #   fi
+  # fi
+  
+  ###################################################################################
+  # YOU CAN WALK IN ARRAY, FIND TARGET ELEMENT AND UNSET IT, BUT
+  # CAUSES INDICES SEQUENCE BROKEN YOU NEED TO RECREATE ARRAY FOR GAPS !
+  ###################################################################################
+  # locale-gen breaks these distros
+  if [[ "${distribution}" == @(opensuse-leap|opensuse-tumbleweed|opensuse|fedora) ]]; then
+    if [[ "${missing_deps[@]}" =~ "locale-gen" ]]; then
+      for i in "${!missing_deps[@]}"; do
+        if [[ ${missing_deps[i]} = "locale-gen" ]]; then
+          unset 'missing_deps[i]'
+        fi
+      done
+    fi
+  fi
 
   if (( ${#missing_deps[@]} )); then
     fixed_missing=( "${missing_deps[@]//_/-}" )
@@ -1242,7 +1370,7 @@ locale_gen () {
 }
 
 # Try to generate needed locale kindly
-if [[ "${locale_missing}" ]]; then
+if ! check_locale; then
   if command -v locale-gen >/dev/null 2>&1; then
     if grep -iq "en_US.UTF-8" /etc/locale.gen; then
       sed -i -e 's/^# en_US\.UTF-8/en_US\.UTF-8/' /etc/locale.gen
@@ -1252,11 +1380,14 @@ if [[ "${locale_missing}" ]]; then
       echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
       locale_gen
     fi
-  else
+  else  
     fake_progress "INSTALLING LOCALE"
     replace_fail "INSTALLING LOCALE FAILED"
     fatal "FAIL_STAGE-4 --> CANNOT INSTALL en_US.UTF-8 LOCALE"
   fi
+else
+  fake_progress "INSTALLING LOCALE"
+  replace_suc "LOCALE INSTALLED "
 fi
 
 # @START THE SETUP
@@ -1275,6 +1406,10 @@ env_info () {
   spinner
 }
 
+# Test done?
+[[ "${github_test}" ]] && { env_info; exit $?; }
+
+# Let's continue setup
 if [[ "$SUDO_USER" ]]; then
   if [[ "$SUDO_USER" != "${new_user}" ]]; then
     if [[ "${1}" == "--force" || "${1}" == "-f" ]]; then
