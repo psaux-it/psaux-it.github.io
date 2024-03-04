@@ -261,7 +261,7 @@ else
     echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
     echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
     echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
-    echo -e "After making changes, remember to restart the systemd \e[95mwp-fcgi-notify.service\e[0m."
+    echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
     exit 1
   fi
 
@@ -281,7 +281,7 @@ else
       echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
       echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
       echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
-      echo -e "After making changes, remember to restart the systemd \e[95mwp-fcgi-notify.service\e[0m."
+      echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
       exit 0
     fi
   fi
