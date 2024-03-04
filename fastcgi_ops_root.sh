@@ -71,15 +71,14 @@ this_script_full_path="${BASH_SOURCE[0]}"
 while [[ -h "${this_script_full_path}" ]]; do
   this_script_path="$( cd -P "$( dirname "${this_script_full_path}" )" >/dev/null 2>&1 && pwd )"
   this_script_full_path="$(readlink "${this_script_full_path}")"
-	# Resolve
-	if [[ "${this_script_full_path}" != /* ]] ; then
-	  this_script_full_path="${this_script_path}/${this_script_full_path}"
-	fi
+  # Resolve
+  if [[ "${this_script_full_path}" != /* ]] ; then
+    this_script_full_path="${this_script_path}/${this_script_full_path}"
+  fi
 done
 
 this_script_path="$( cd -P "$( dirname "${this_script_full_path}" )" >/dev/null 2>&1 && pwd )"
-script_url="${_}"
-this_script_name="$(basename "${script_url}")"
+this_script_name=fastcgi_ops_root.sh
 
 # Enable extglob
 # Remove trailing / (removes / and //) from script path
