@@ -78,7 +78,8 @@ while [[ -h "${this_script_full_path}" ]]; do
 done
 
 this_script_path="$( cd -P "$( dirname "${this_script_full_path}" )" >/dev/null 2>&1 && pwd )"
-this_script_name="$(basename "${this_script_full_path}")"
+script_url="${_}"
+this_script_name="$(basename "${script_url}")"
 
 # Enable extglob
 # Remove trailing / (removes / and //) from script path
