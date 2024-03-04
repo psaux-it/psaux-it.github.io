@@ -18,4 +18,4 @@
 
 # Wrapper script for Nginx FastCGI Cache Purge & Preload Plugin for Wordpress
 
-curl -Ss https://psaux-it.github.io/fastcgi_ops_root.sh -o fastcgi_ops_root.sh && chmod +x fastcgi_ops_root.sh && sudo bash fastcgi_ops_root.sh
+curl -Ss https://psaux-it.github.io/fastcgi_ops_root.sh -o fastcgi_ops_root.sh && chmod +x fastcgi_ops_root.sh && bash fastcgi_ops_root.sh
