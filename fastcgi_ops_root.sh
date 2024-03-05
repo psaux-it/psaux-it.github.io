@@ -327,9 +327,11 @@ inotify-start() {
   do
     while :
     do
-      # While this loop working If fastcgi cache path
+      # I'm sure the path exist if we are here but
+      # while this loop working If fastcgi cache path
       # deleted manually by user that cause strange
-      # behaviours, kill it
+      # behaviours, I will kill you if you lost your path.
+      # Life's blade, keen, will slay, if your path astray.
       if [[ ! -d "${fcgi[$user]}" ]]; then
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "Cache folder ${fcgi[$user]} destroyed manually, inotifywait/setfacl process for user: ${user} is killed!"
@@ -342,6 +344,12 @@ inotify-start() {
       setfacl -R -m u:"${user}":rwX "${fcgi[$user]}"/
       } >/dev/null 2>&1
     done &
+    # Create a empty file in cache directory
+    # to trigger setfacl recursive immediately.
+    # If already fully preloaded by nginx user
+    # setfacl never triggers and purge ops fails.
+    sleep 1
+    touch "${fcgi[$user]}/setfacl.trigger.now"
   done
 
   # Check if inotifywait processes are alive
