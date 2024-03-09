@@ -143,7 +143,9 @@ for VHOST in $ACTIVE_VHOSTS; do
   FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths | sort -u)
 
   # Extract PHP-FPM users from running processes, excluding root
-  PHP_FPM_USERS=$(ps -eo user:20,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//')
+  ACTIVE_PHP_FPM_USERS=$(ps -eo user:20,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+  ONDEMAND_PHP_FPM_USERS=$(echo "$PHP_FPM_USERS" "$ACTIVE_PHP_FPM_USERS" | tr ' ' '\n' | sort | uniq -u)
   for PHP_FPM_USER in $PHP_FPM_USERS; do
     for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
       # Check if the PHP-FPM user's name is present in the FastCGI cache path
@@ -320,6 +322,17 @@ inotify-start() {
       fi
     done
   fi
+
+  # Prevent starting multiple instances for same path
+  for path in "${!fcgi[@]}"; do
+    if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
+      echo "Your FastCGI cache directory (${fcgi[$path]})is already listening, EXCLUDED"
+      unset "fcgi[$path]"
+    fi
+  done
+
+  # Exit if all instances are excluded and already running
+  ! (( "${#fcgi[@]}" )) && { echo "All instances(paths) already listening, nothing to do"; exit 0; }
 
   # start to listen fastcgi cache folder events
   # give write permission to website user for further purge ops
