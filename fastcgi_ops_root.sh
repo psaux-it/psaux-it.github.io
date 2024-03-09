@@ -143,9 +143,9 @@ for VHOST in $ACTIVE_VHOSTS; do
   FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
 
   # Extract PHP-FPM users from running processes, excluding root
-  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//')
+  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
   ACTIVE_PHP_FPM_USERS=$(ps -eo user:20,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-  ONDEMAND_PHP_FPM_USERS=$(echo "$PHP_FPM_USERS" "$ACTIVE_PHP_FPM_USERS" | tr ' ' '\n' | sort | uniq -u)
+  ONDEMAND_PHP_FPM_USERS=$(comm -23 <(echo "$PHP_FPM_USERS") <(echo "$ACTIVE_PHP_FPM_USERS")
   for PHP_FPM_USER in $PHP_FPM_USERS; do
     for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
       # Check if the PHP-FPM user's name is present in the FastCGI cache path
