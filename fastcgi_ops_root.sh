@@ -331,7 +331,7 @@ inotify-start() {
     fi
   done
 
-  # Exit if all instances are excluded and already running
+  # Exit if all instances are excluded means already running
   ! (( "${#fcgi[@]}" )) && { echo "All instances(paths) already listening, nothing to do"; exit 0; }
 
   # start to listen fastcgi cache folder events
@@ -363,6 +363,7 @@ inotify-start() {
     # setfacl never triggers and purge ops fails.
     sleep 1
     touch "${fcgi[$user]}/setfacl.trigger.now"
+    chown "${user}":"${user}" "${fcgi[$user]}/setfacl.triggered"
   done
 
   # Check if inotifywait processes are alive
