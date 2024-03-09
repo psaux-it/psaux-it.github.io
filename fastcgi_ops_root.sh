@@ -147,14 +147,6 @@ while IFS= read -r VHOST; do
     done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
 done <<< "$ACTIVE_VHOSTS"
 
-# Loop through active vhosts
-#for VHOST in $ACTIVE_VHOSTS; do
-  # Extract PHP-FPM users from running processes, excluding root
-#  while read -r user; do
-#      ACTIVE_PHP_FPM_USERS+=("$user")
-#  done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-#done
-
 # Check if the PHP-FPM user's name is present in the FastCGI cache path
 for PHP_FPM_USER in $PHP_FPM_USERS; do
   for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
