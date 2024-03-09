@@ -140,7 +140,7 @@ for VHOST in $ACTIVE_VHOSTS; do
   VHOST_CONFIG_FILE=$(echo "$VHOST" | sed 's/;$//')
 
   # Extract unique FastCGI cache paths from Nginx config files
-  FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths | sort -u)
+  FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
 
   # Extract PHP-FPM users from running processes, excluding root
   PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//')
