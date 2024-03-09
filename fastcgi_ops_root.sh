@@ -100,6 +100,9 @@ detect_nginx_conf() {
   fi
 }
 
+# Detect nginx.conf
+detect_nginx_conf
+
 # Function to extract FastCGI cache paths from NGINX configuration files
 extract_fastcgi_cache_paths() {
   {
@@ -125,35 +128,40 @@ extract_fastcgi_cache_paths() {
   } | sort | uniq
 }
 
-# Detect nginx.conf
-detect_nginx_conf
-
-# Check active vhosts
-ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}')
+# Extract unique FastCGI cache paths from Nginx config files
+FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
+# Find active vhosts
+ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
+# Find all php-fpm users
+PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
 # Associative array to store php-fpm user and fastcgi cache path
 declare -A fcgi
 
 # Loop through active vhosts
-for VHOST in $ACTIVE_VHOSTS; do
-  # Remove any trailing semicolons from the file name
-  VHOST_CONFIG_FILE=$(echo "$VHOST" | sed 's/;$//')
-
-  # Extract unique FastCGI cache paths from Nginx config files
-  FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
-
+while IFS= read -r VHOST; do
+  ACTIVE_VHOSTS+=("$VHOST")
   # Extract PHP-FPM users from running processes, excluding root
-  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
-  ACTIVE_PHP_FPM_USERS=$(ps -eo user:20,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-  ONDEMAND_PHP_FPM_USERS=$(comm -23 <(echo "$PHP_FPM_USERS") <(echo "$ACTIVE_PHP_FPM_USERS")
-  for PHP_FPM_USER in $PHP_FPM_USERS; do
-    for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
-      # Check if the PHP-FPM user's name is present in the FastCGI cache path
-      if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
-        fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
-        break  # Move to the next PHP-FPM user once a match is found
-      fi
-    done
+  while read -r user; do
+    ACTIVE_PHP_FPM_USERS+=("$user")
+    done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+done <<< "$ACTIVE_VHOSTS"
+
+# Loop through active vhosts
+#for VHOST in $ACTIVE_VHOSTS; do
+  # Extract PHP-FPM users from running processes, excluding root
+#  while read -r user; do
+#      ACTIVE_PHP_FPM_USERS+=("$user")
+#  done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+#done
+
+# Check if the PHP-FPM user's name is present in the FastCGI cache path
+for PHP_FPM_USER in $PHP_FPM_USERS; do
+  for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
+    if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
+      fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
+      break
+    fi
   done
 done
 
@@ -197,17 +205,18 @@ NGINX_
     # Enable the service
     systemctl enable wp-fcgi-notify.service > /dev/null 2>&1
 
-    # Start the service if it's not already active
-    if ! systemctl is-active --quiet wp-fcgi-notify.service; then
-      systemctl start wp-fcgi-notify.service
+    # Start the service
+    systemctl start wp-fcgi-notify.service
 
-      # Check if the service started successfully
-      if systemctl is-active --quiet wp-fcgi-notify.service; then
-        echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is started."
-      else
-        echo -e "\e[91mError:\e[0m Service \e[93mwp-fcgi-notify\e[0m failed to start."
-      fi
+    # Check if the service started successfully
+    if systemctl is-active --quiet wp-fcgi-notify.service; then
+      echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is started."
+    else
+      echo -e "\e[91mError:\e[0m Service \e[93mwp-fcgi-notify\e[0m failed to start."
     fi
+  else
+    systemctl stop wp-fcgi-notify.service
+    systemctl start wp-fcgi-notify.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is re-started."
   fi
 }
 
@@ -277,6 +286,17 @@ else
 
   # check setup already completed or not
   if ! [[ -f "${this_script_path}/auto_setup_on" ]]; then
+    green=$(tput setaf 2)
+    magenta=$(tput setaf 5)
+    reset=$(tput sgr0)
+
+    echo -e "${green}All PHP-FPM Users:${reset}"
+    echo -e "${magenta}${PHP_FPM_USERS[@]:-"None"}${reset}"
+    echo -e "${green}Active PHP-FPM Users:${reset}"
+    echo -e "${magenta}${ACTIVE_PHP_FPM_USERS[@]:-"None"}${reset}"
+    echo -e "${green}Ondemand PHP-FPM Users:${reset}"
+    echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
+
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
     echo -e "\e[96mDetected FastCGI cache paths and associated PHP-FPM users:\e[0m"
     for user in "${!fcgi[@]}"; do
@@ -331,8 +351,23 @@ inotify-start() {
     fi
   done
 
-  # Exit if all instances are excluded means already running
-  ! (( "${#fcgi[@]}" )) && { echo "All instances(paths) already listening, nothing to do"; exit 0; }
+  # Check if all instances are excluded and already running
+  all_excluded=true
+  for path in "${!fcgi[@]}"; do
+    if ! pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
+      all_excluded=false
+      break
+    fi
+  done
+
+  # Exit if all instances are excluded and already running
+  if [ "$all_excluded" = true ]; then
+    echo "All instances(paths) already listening, nothing to do"
+    exit 0
+  fi
+
+  # Exit if all instances are excluded and already running
+  #! (( "${#fcgi[@]}" )) && { echo "All instances(paths) already listening, nothing to do"; exit 0; }
 
   # start to listen fastcgi cache folder events
   # give write permission to website user for further purge ops
@@ -340,11 +375,9 @@ inotify-start() {
   do
     while :
     do
-      # I'm sure the path exist if we are here but
-      # while this loop working If fastcgi cache path
+      # While this loop working If fastcgi cache path
       # deleted manually by user that cause strange
-      # behaviours, I will kill you if you lost your path.
-      # Life's blade, keen, will slay, if your path astray.
+      # behaviours, kill it
       if [[ ! -d "${fcgi[$user]}" ]]; then
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "Cache folder ${fcgi[$user]} destroyed manually, inotifywait/setfacl process for user: ${user} is killed!"
@@ -361,8 +394,7 @@ inotify-start() {
     # to trigger setfacl recursive immediately.
     # If already fully preloaded by nginx user
     # setfacl never triggers and purge ops fails.
-    sleep 1
-    touch "${fcgi[$user]}/setfacl.trigger.now"
+    touch "${fcgi[$user]}/setfacl.triggered"
     chown "${user}":"${user}" "${fcgi[$user]}/setfacl.triggered"
   done
 
@@ -406,15 +438,14 @@ inotify-stop() {
     fi
   done
 
-  # kill inotifywait processes
+  # Kill inotifywait processes and --wp-inotify-start processes
   for listen in "${!fcgi[@]}"; do
-    read -r -a PIDS <<< "$(pgrep -f "inotifywait.*${fcgi[$listen]}")"
-    if (( "${#PIDS[@]}" )); then
-      for pid in "${PIDS[@]}"; do
+    # Kill inotifywait processes
+    read -r -a INOTIFY_PIDS <<< "$(pgrep -f "inotifywait.*${fcgi[$listen]}")"
+    if (( "${#INOTIFY_PIDS[@]}" )); then
+      for pid in "${INOTIFY_PIDS[@]}"; do
         if ps -p "${pid}" >/dev/null 2>&1; then
-          kill -9 $pid && echo "inotifywait process $pid for website $listen is killed!"
-        else
-          echo "No inotify process found for website $listen - last running process was $pid"
+          kill -9 "$pid" && echo "inotifywait process $pid for website $listen is killed!"
         fi
       done
     else
