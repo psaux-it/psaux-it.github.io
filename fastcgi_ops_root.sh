@@ -179,6 +179,7 @@ After=network.target nginx.service local-fs.target
 Wants=nginx.service
 
 [Service]
+KillSignal=SIGKILL
 Type=simple
 RemainAfterExit=yes
 User=root
