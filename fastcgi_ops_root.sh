@@ -366,8 +366,9 @@ inotify-start() {
   # give write permission to website user for further purge ops
   for user in "${!fcgi[@]}"
   do
-    while :
-    do
+    setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${fcgi[$user]}"/
+    # Start inotifywait/setfacl
+    while read -r directory event file_folder; do
       # While this loop working If fastcgi cache path
       # deleted manually by user that cause strange
       # behaviours, kill it
@@ -377,18 +378,10 @@ inotify-start() {
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         break
       fi
-      # Start inotifywait/setfacl
-      {
-      inotifywait -q -e modify,create -r "${fcgi[$user]}" && \
-      setfacl -R -m u:"${user}":rwX "${fcgi[$user]}"/
-      } >/dev/null 2>&1
-    done &
-    # Create a empty file in cache directory
-    # to trigger setfacl recursive immediately.
-    # If already fully preloaded by nginx user
-    # setfacl never triggers and purge ops fails.
-    touch "${fcgi[$user]}/setfacl.triggered"
-    chown "${user}":"${user}" "${fcgi[$user]}/setfacl.triggered"
+
+      # Set ACLs for files and folders created and modified in cache directory
+      setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${fcgi[$user]}"/
+    done < <(inotifywait -m -q -e modify,create -r "${fcgi[$user]}") >/dev/null 2>&1 &
   done
 
   # Check if inotifywait processes are alive
