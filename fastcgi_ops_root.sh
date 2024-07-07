@@ -16,6 +16,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+manual_setup() {
+  echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
+  # Provide instructions for manual configuration
+  echo -e "\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
+  echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
+  echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
+  echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
+  exit 1
+}
+
+# user confirmation and handle ctrl+c
+trap manual_setup SIGINT
 
 # Get help before and interrupt
 help() {
@@ -143,7 +155,7 @@ while IFS= read -r VHOST; do
   # Extract PHP-FPM users from running processes, excluding root
   while read -r user; do
     ACTIVE_PHP_FPM_USERS+=("$user")
-    done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+  done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
 done <<< "$ACTIVE_VHOSTS"
 
 # Check if the PHP-FPM user's name is present in the FastCGI cache path
@@ -173,7 +185,7 @@ check_and_start_systemd_service() {
     # Generate systemd service file
     cat <<- NGINX_ > "$service_file"
 [Unit]
-Description=FastCGI Operations Service
+Description=NPP Wordpress Plugin Cache Operations Service
 After=network.target nginx.service local-fs.target
 Wants=nginx.service
 
@@ -202,13 +214,13 @@ NGINX_
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
-      echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is started."
+      echo -e "\e[92mSuccess:\e[0m Service \e[93mnpp-wordpress\e[0m is started."
     else
-      echo -e "\e[91mError:\e[0m Service \e[93mwp-fcgi-notify\e[0m failed to start."
+      echo -e "\e[91mError:\e[0m Service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
     systemctl stop npp-wordpress.service
-    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is re-started."
+    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mnpp-wordpress\e[0m is re-started."
   fi
 }
 
@@ -260,6 +272,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     fcgi["$user"]="$cache_path"
   done < "${this_script_path}/manual-configs.nginx"
+  
   # Check setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
@@ -300,13 +313,7 @@ else
     if [[ $confirm =~ ^[Yy]$ || $confirm == "" ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
     else
-      echo -e "\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
-      # Provide instructions for manual configuration
-      echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
-      echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
-      echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
-      echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
-      exit 0
+      manual_setup
     fi
   fi
 fi
