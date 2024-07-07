@@ -292,9 +292,9 @@ else
     echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
-    echo -e "\e[96mDetected FastCGI cache paths and associated PHP-FPM users:\e[0m"
+    echo -e "\e[96mDetected Nginx cache paths and associated PHP-FPM users:\e[0m"
     for user in "${!fcgi[@]}"; do
-      echo -e "User: \e[92m$user\e[0m, Cache Path: \e[93m${fcgi[$user]}\e[0m"
+      echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
     read -rp $'\e[96mDo you want to proceed with the above configuration? [Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ || $confirm == "" ]]; then
