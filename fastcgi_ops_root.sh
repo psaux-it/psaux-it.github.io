@@ -16,6 +16,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# SCRIPT DESCRIPTION:
+# This script manages Nginx FastCGI cache operations for WordPress websites running on Nginx.
+# This script is written for "FastCGI Cache Purge and Preload for Nginx" Wordpress Plugin.
+# It automates cache purging and preload tasks by monitoring changes in FastCGI cache
+# directories using inotifywait. Additionally, it sets up ACL permissions for PHP-FPM users,
+# ensuring they have necessary access for cache operations. The script also integrates with
+# systemd to manage a background service for continuous cache management.
+
+# Manual setup instructions
 manual_setup() {
   echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
   # Provide instructions for manual configuration
@@ -26,7 +35,7 @@ manual_setup() {
   exit 1
 }
 
-# user confirmation and handle ctrl+c
+# Handle ctrl+c
 trap manual_setup SIGINT
 
 # Get help before and interrupt
@@ -39,8 +48,8 @@ help() {
 
   echo -e "\n${m_tab}${cyan}# Wordpress FastCGI Cache Purge&Preload Help"
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------"
-  echo -e "${m_tab}#${m_tab}--wp-inotify-start   need root or SUDO! set ACL permission(cache folder) for website-user"
-  echo -e "${m_tab}#${m_tab}--wp-inotify-stop    need root or SUDO! unset ACL permission(cache folder) for website-user"
+  echo -e "${m_tab}#${m_tab}--wp-inotify-start   need root! start listening events(cache folder), set ACL permission(PHP-FPM USER)"
+  echo -e "${m_tab}#${m_tab}--wp-inotify-stop    need root! stop  listening events(cache folder), unset ACL permission(PHP-FPM USER)"
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------${reset}\n"
 }
 
@@ -77,12 +86,12 @@ if ! tune2fs -l "${fs}" | grep -q "Default mount options:.*acl"; then
   exit 1
 fi
 
-# discover script path
+# Discover script path
 this_script_full_path=$(realpath "${BASH_SOURCE[0]}")
 this_script_path=$(dirname "${this_script_full_path}")
 this_script_name=$(basename "${this_script_full_path}")
 
-# ensure script path is resolved
+# Ensure script path is resolved
 if [[ -z "${this_script_path}" ]]; then
   echo "ERROR: Cannot find script path!"
   exit 1
@@ -214,13 +223,15 @@ NGINX_
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
-      echo -e "\e[92mSuccess:\e[0m Service \e[93mnpp-wordpress\e[0m is started."
+      echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
+      echo ""
+      echo "$(systemctl status npp-wordpress.service | grep -E 'Started|All done!' | sed 's/.*: //')"
     else
-      echo -e "\e[91mError:\e[0m Service \e[93mnpp-wordpress\e[0m failed to start."
+      echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
     systemctl stop npp-wordpress.service
-    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mnpp-wordpress\e[0m is re-started."
+    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
   fi
 }
 
