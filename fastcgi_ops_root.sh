@@ -25,7 +25,7 @@ help() {
     m_tab='  '
   fi
 
-  echo -e "\n${m_tab}${cyan}# Wordpress FastCGI Cache Purge&Preload Help"
+  echo -e "\n${m_tab}${cyan}# Wordpress Nginx FastCGI Cache Purge&Preload Help"
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------"
   echo -e "${m_tab}#${m_tab}--wp-inotify-start   need root or SUDO! set ACL permission(cache folder) for website-user"
   echo -e "${m_tab}#${m_tab}--wp-inotify-stop    need root or SUDO! unset ACL permission(cache folder) for website-user"
@@ -102,13 +102,13 @@ detect_nginx_conf() {
 # Detect nginx.conf
 detect_nginx_conf
 
-# Function to extract FastCGI cache paths from NGINX configuration files
-extract_fastcgi_cache_paths() {
+# Function to extract  cache paths from NGINX configuration files
+extract__cache_paths() {
   {
     # Extract paths from directly nginx.conf
-    grep -E "^\s*fastcgi_cache_path\s+" "$NGINX_CONF" | awk '{print $2}'
+    grep -E "^\s*_cache_path\s+" "$NGINX_CONF" | awk '{print $2}'
 
-    # Also get included paths to nginx.conf and extract fastcgi cache paths
+    # Also get included paths to nginx.conf and extract  cache paths
     while IFS= read -r include_line; do
       include_path=$(echo "$include_line" | awk '{print $2}')
       # Check wildcard for multiple files
@@ -117,24 +117,24 @@ extract_fastcgi_cache_paths() {
         target_dir=$(echo "$include_path" | sed 's/\*.*//' | sed 's/\/$//')
       else
         # This is a directly included single file
-        grep -E "^\s*fastcgi_cache_path\s+" "${include_path}" | awk '{print $2}'
+        grep -E "^\s*_cache_path\s+" "${include_path}" | awk '{print $2}'
       fi
-      # Search for fastcgi_cache_path in the target directory recursively
+      # Search for _cache_path in the target directory recursively
       if [ -d "${target_dir}" ]; then
-        find -L "${target_dir}" -type f -exec grep -H "fastcgi_cache_path" {} + | awk -F: '{print $2":"$3}' | sed '/^\s*#/d' | awk '{print $2}'
+        find -L "${target_dir}" -type f -exec grep -H "_cache_path" {} + | awk -F: '{print $2":"$3}' | sed '/^\s*#/d' | awk '{print $2}'
       fi
     done < <(grep -E "^\s*include\s+" "${NGINX_CONF}" | grep -v "^\s*#" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/;//')
   } | sort | uniq
 }
 
-# Extract unique FastCGI cache paths from Nginx config files
-FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
+# Extract unique  cache paths from Nginx config files
+_CACHE_PATHS=$(extract__cache_paths)
 # Find active vhosts
-ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
+ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|_pass" | grep -B1 "_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
 # Find all php-fpm users
 PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
-# Associative array to store php-fpm user and fastcgi cache path
+# Associative array to store php-fpm user and  cache path
 declare -A fcgi
 
 # Loop through active vhosts
@@ -146,10 +146,10 @@ while IFS= read -r VHOST; do
     done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
 done <<< "$ACTIVE_VHOSTS"
 
-# Check if the PHP-FPM user's name is present in the FastCGI cache path
+# Check if the PHP-FPM user's name is present in the  cache path
 for PHP_FPM_USER in $PHP_FPM_USERS; do
-  for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
-    if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
+  for _CACHE_PATH in $_CACHE_PATHS; do
+    if echo "$_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
       fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
       break
     fi
@@ -292,9 +292,9 @@ else
     echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
-    echo -e "\e[96mDetected FastCGI cache paths and associated PHP-FPM users:\e[0m"
+    echo -e "\e[96mDetected Nginx cache paths and associated PHP-FPM users:\e[0m"
     for user in "${!fcgi[@]}"; do
-      echo -e "User: \e[92m$user\e[0m, Cache Path: \e[93m${fcgi[$user]}\e[0m"
+      echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
     read -rp $'\e[96mDo you want to proceed with the above configuration? [Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ || $confirm == "" ]]; then
