@@ -102,6 +102,26 @@ fi
 shopt -s extglob
 this_script_path="${this_script_path%%+(/)}"
 
+# Restart setup
+restart_auto_setup() {
+  setup_flag="${this_script_path}/auto_setup_on"
+
+  # Remove the completed setup flag
+  rm -f "$setup_flag"
+
+  # Restart the setup
+  exec bash "${this_script_path}/${this_script_name}"
+}
+
+# Prompt restart setup
+if [[ -f "${this_script_path}/auto_setup_on" ]]; then
+  # User prompt for fresh restart auto setup
+  read -rp $'\e[96mAuto setup has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+  if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+    restart_auto_setup
+  fi
+fi
+
 # Function to dynamically detect the location of nginx.conf
 detect_nginx_conf() {
   local DEFAULT_NGINX_CONF_PATHS=(
@@ -200,6 +220,7 @@ Wants=nginx.service
 
 [Service]
 KillSignal=SIGKILL
+TimeoutStopSec=5
 Type=simple
 RemainAfterExit=yes
 User=root
@@ -219,7 +240,7 @@ NGINX_
     systemctl enable npp-wordpress.service > /dev/null 2>&1
 
     # Start the service
-    systemctl start npp-wordpress.service
+    systemctl start npp-wordpress.service > /dev/null 2>&1
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
@@ -230,8 +251,12 @@ NGINX_
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
-    systemctl stop npp-wordpress.service
-    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
+    systemctl stop npp-wordpress.service > /dev/null 2>&1
+    sleep 6
+    if systemctl is-active --quiet npp-wordpress.service; then
+      systemctl kill npp-wordpress.service > /dev/null 2>&1
+    fi
+    systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
   fi
 }
 
@@ -320,11 +345,22 @@ else
     for user in "${!fcgi[@]}"; do
       echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
-    read -rp $'\e[96mDo you want to proceed with the above configuration? [Y/n]: \e[0m' confirm
+    read -rp $'\e[96mDo you want to proceed with the above configuration? This takes a while.. [Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ || $confirm == "" ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
     else
       manual_setup
+    fi
+  else
+    # Auto setup completed but systemd service is inactive, restart
+    if ! systemctl is-active --quiet npp-wordpress.service; then
+      systemctl stop npp-wordpress.service > /dev/null 2>&1
+      sleep 6
+      # force stop
+      if systemctl is-active --quiet npp-wordpress.service; then
+        systemctl kill npp-wordpress.service > /dev/null 2>&1
+      fi
+      systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Auto setup has already been completed but systemd service is not active. Systemd service \e[93mnpp-wordpress\e[0m is re-started."
     fi
   fi
 fi
