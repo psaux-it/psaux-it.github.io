@@ -305,7 +305,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     fcgi["$user"]="$cache_path"
   done < "${this_script_path}/manual-configs.nginx"
-  
+
   # Check setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
@@ -329,7 +329,13 @@ else
     reset=$(tput sgr0)
     # remove duplicates from array
     ACTIVE_PHP_FPM_USERS=($(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}" | sort -u))
+    # Convert PHP_FPM_USERS string to an array
+    IFS=$'\n' read -r -d '' -a PHP_FPM_USERS <<< "${PHP_FPM_USERS}"
 
+    echo ""
+    echo -e "${green}AUTO DETECTION STARTED${reset}"
+    echo -e "\e[96mNOTE: You can always continue with the manual setup via (\e[95mN/n\e[96m) if the auto detection does not work for you.\e[0m"
+    echo ""
     echo -e "${green}All PHP-FPM Users:${reset}"
     echo -e "${magenta}${PHP_FPM_USERS[@]:-"None"}${reset}"
     echo -e "${green}Dynamic PHP-FPM Users:${reset}"
@@ -338,12 +344,13 @@ else
     echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
-    echo -e "\e[96mDetected Nginx cache paths and associated PHP-FPM users:\e[0m"
+    echo ""
+    echo -e "\e[96mAuto detected Nginx cache paths and associated PHP-FPM users:\e[0m"
     for user in "${!fcgi[@]}"; do
       echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
-    read -rp $'\e[96mDo you want to proceed with the above configuration? This takes a while.. [Y/n]: \e[0m' confirm
-    if [[ $confirm =~ ^[Yy]$ || $confirm == "" ]]; then
+    read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. [Y/n]: \e[0m' confirm
+    if [[ $confirm =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
     else
       manual_setup
