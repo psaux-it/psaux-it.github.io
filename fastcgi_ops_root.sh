@@ -168,7 +168,7 @@ done
 # Systemd operations
 check_and_start_systemd_service() {
   # Check if the service file exists
-  service_file="/etc/systemd/system/wp-fcgi-notify.service"
+  service_file="/etc/systemd/system/npp-wordpress.service"
 
   if [[ ! -f "$service_file" ]]; then
     # Generate systemd service file
@@ -196,20 +196,20 @@ NGINX_
     systemctl daemon-reload > /dev/null 2>&1
 
     # Enable the service
-    systemctl enable wp-fcgi-notify.service > /dev/null 2>&1
+    systemctl enable npp-wordpress.service > /dev/null 2>&1
 
     # Start the service
-    systemctl start wp-fcgi-notify.service
+    systemctl start npp-wordpress.service
 
     # Check if the service started successfully
-    if systemctl is-active --quiet wp-fcgi-notify.service; then
+    if systemctl is-active --quiet npp-wordpress.service; then
       echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is started."
     else
       echo -e "\e[91mError:\e[0m Service \e[93mwp-fcgi-notify\e[0m failed to start."
     fi
   else
-    systemctl stop wp-fcgi-notify.service
-    systemctl start wp-fcgi-notify.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is re-started."
+    systemctl stop npp-wordpress.service
+    systemctl start npp-wordpress.service && echo -e "\e[92mSuccess:\e[0m Service \e[93mwp-fcgi-notify\e[0m is re-started."
   fi
 }
 
