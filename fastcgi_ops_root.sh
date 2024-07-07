@@ -69,6 +69,7 @@ required_commands=(
   "inotifywait"
   "tune2fs"
   "setfacl"
+  "systemctl"
 )
 
 # Check if required commands are available
@@ -236,23 +237,19 @@ NGINX_
     # Reload systemd's configuration
     systemctl daemon-reload > /dev/null 2>&1
 
-    # Enable the service
-    systemctl enable npp-wordpress.service > /dev/null 2>&1
-
-    # Start the service
-    systemctl start npp-wordpress.service > /dev/null 2>&1
+    # Enable and start the service
+    systemctl enable --now npp-wordpress.service > /dev/null 2>&1
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
       echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
-      echo ""
-      echo "$(systemctl status npp-wordpress.service | grep -E 'Started|All done!' | sed 's/.*: //')"
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
     systemctl stop npp-wordpress.service > /dev/null 2>&1
-    sleep 6
+    sleep 5
+    # force to stop service immediately
     if systemctl is-active --quiet npp-wordpress.service; then
       systemctl kill npp-wordpress.service > /dev/null 2>&1
     fi
