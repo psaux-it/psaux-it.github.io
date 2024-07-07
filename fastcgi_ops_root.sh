@@ -281,10 +281,12 @@ else
     green=$(tput setaf 2)
     magenta=$(tput setaf 5)
     reset=$(tput sgr0)
+    # remove duplicates from array
+    ACTIVE_PHP_FPM_USERS=($(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}" | sort -u))
 
     echo -e "${green}All PHP-FPM Users:${reset}"
     echo -e "${magenta}${PHP_FPM_USERS[@]:-"None"}${reset}"
-    echo -e "${green}Active PHP-FPM Users:${reset}"
+    echo -e "${green}Dynamic PHP-FPM Users:${reset}"
     echo -e "${magenta}${ACTIVE_PHP_FPM_USERS[@]:-"None"}${reset}"
     echo -e "${green}Ondemand PHP-FPM Users:${reset}"
     echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
