@@ -364,7 +364,7 @@ else
       if systemctl is-active --quiet npp-wordpress.service; then
         systemctl kill npp-wordpress.service > /dev/null 2>&1
       fi
-      systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Auto setup has already been completed but systemd service is not active. Systemd service \e[93mnpp-wordpress\e[0m is re-started."
+      systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Auto setup has already been completed but systemd service is not active, service \e[93mnpp-wordpress\e[0m is re-started."
     fi
   fi
 fi
