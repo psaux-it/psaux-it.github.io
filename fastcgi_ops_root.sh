@@ -45,7 +45,6 @@ required_commands=(
   "pgrep"
   "basename"
   "nginx"
-  "php-fpm"
   "inotifywait"
   "tune2fs"
   "setfacl"
