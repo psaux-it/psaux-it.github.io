@@ -29,7 +29,7 @@ manual_setup() {
   echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
   # Provide instructions for manual configuration
   echo -e "\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
-  echo -e "Each entry should follow the format: 'PHP-FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
+  echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
   echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
   echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
   echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m manually."
@@ -324,11 +324,12 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
-    echo -e "\e[91mError:\e[0m No FastCGI cache paths and associated PHP-FPM users detected."
+    echo -e "\e[91mError:\e[0m No Nginx cache paths and associated PHP-FPM users detected."
     echo -e "\e[91mPlease ensure that your Nginx configuration is properly set up. \e[0mIf the issue persist please try to manual setup.\e[0m"
     # Provide instructions for manual configuration
     echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
-    echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
+    echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
+    echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
     echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
     echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
     exit 1
@@ -366,17 +367,6 @@ else
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
     else
       manual_setup
-    fi
-  else
-    # Auto setup completed but systemd service is inactive, restart
-    if ! systemctl is-active --quiet npp-wordpress.service; then
-      systemctl stop npp-wordpress.service > /dev/null 2>&1
-      sleep 6
-      # force stop
-      if systemctl is-active --quiet npp-wordpress.service; then
-        systemctl kill npp-wordpress.service > /dev/null 2>&1
-      fi
-      systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Auto setup has already been completed but systemd service is not active, service \e[93mnpp-wordpress\e[0m is re-started."
     fi
   fi
 fi
