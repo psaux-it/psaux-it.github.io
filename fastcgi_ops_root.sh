@@ -28,7 +28,7 @@
 manual_setup() {
   echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
   # Provide instructions for manual configuration
-  echo -e "\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
+  echo -e "\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
   echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
   echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
   echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
@@ -283,7 +283,7 @@ ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
 WantedBy=multi-user.target
 NGINX_
 
-    # Reload systemd's configuration
+    # Reload systemd
     systemctl daemon-reload > /dev/null 2>&1
 
     # Enable and start the service
@@ -360,14 +360,16 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
-    echo -e "\e[91mError:\e[0m No Nginx cache paths and associated PHP-FPM users detected."
-    echo -e "\e[91mPlease ensure that your Nginx configuration is properly set up. \e[0mIf the issue persist please try to manual setup.\e[0m"
+    echo ""
+    echo -e "\e[91mError:\e[0m Auto setup failed! Nginx cache paths with associated PHP-FPM users cannot be automatically detected."
+    echo -e "\e[91mPlease ensure that your Nginx configuration is properly set up. \e[95mIf the issue persist please try to manual setup.\e[0m"
     # Provide instructions for manual configuration
-    echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
+    echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
     echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
     echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
     echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
     echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
+    echo ""
     exit 1
   fi
 
