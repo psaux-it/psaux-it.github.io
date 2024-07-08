@@ -111,7 +111,7 @@ restart_auto_setup() {
     setup_flag="${this_script_path}/auto_setup_on"
   fi
 
-  # Remove the completed setup flag
+  # Remove the completed setup lock file
   rm -f "$setup_flag"
 
   # Restart the setup
@@ -121,17 +121,11 @@ restart_auto_setup() {
 # Prompt restart setup
 if [[ -f "${this_script_path}/auto_setup_on" ]]; then
   # User prompt for fresh restart auto setup
-  if systemctl is-active --quiet npp-wordpress.service; then
-    systemctl status npp-wordpress.service | grep -E 'Started|All done!' | sed 's/.*: //'
-  fi
   read -rp $'\e[96mAuto setup has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup
   fi
 elif [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
-  if systemctl is-active --quiet npp-wordpress.service; then
-    systemctl status npp-wordpress.service | grep -E 'Started|All done!' | sed 's/.*: //'
-  fi
   read -rp $'\e[96mManual setup via "manual-configs.nginx" has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup manual
@@ -263,7 +257,6 @@ NGINX_
     fi
   else
     systemctl stop npp-wordpress.service > /dev/null 2>&1
-    sleep 5
     # force to stop service immediately
     if systemctl is-active --quiet npp-wordpress.service; then
       systemctl kill npp-wordpress.service > /dev/null 2>&1
