@@ -182,12 +182,48 @@ extract_fastcgi_cache_paths() {
   } | sort | uniq
 }
 
+# Function to validate FastCGI cache paths
+validate_cache_paths() {
+  local path_list=("$@")
+  local invalid_paths=()
+  local critical_dirs=("/bin" "/boot" "/etc" "/home" "/lib" "/media" "/mnt" "/opt" "/proc" "/root" "/sbin" "/srv" "/sys" "/usr")
+
+  for path in "${path_list[@]}"; do
+    # Check if path is just '/'
+    if [[ "$path" == "/" ]]; then
+      invalid_paths+=("$path")
+      continue
+    fi
+
+    # Check Nginx cache path is a critical directory or starts with any critical directory
+    for critical in "${critical_dirs[@]}"; do
+      if [[ "$path" == "$critical" || "$path" == "$critical/"* ]]; then
+        invalid_paths+=("$path")
+        break
+      fi
+    done
+  done
+
+  if [[ ${#invalid_paths[@]} -gt 0 ]]; then
+    echo -e "\033[0;36mError: The following cache paths are critical system directories or root directory and cannot be used:\033[0m"
+    for invalid in "${invalid_paths[@]}"; do
+      echo -e "\033[0;31m$invalid\033[0m"
+    done
+    return 1
+  fi
+}
+
 # Extract unique FastCGI cache paths from Nginx config files
 FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
 # Find active vhosts
 ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
 # Find all php-fpm users
 PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
+
+# Validate the found Nginx FastCGI cache paths
+if ! validate_cache_paths ${FASTCGI_CACHE_PATHS}; then
+  exit 1
+fi
 
 # Associative array to store php-fpm user and fastcgi cache path
 declare -A fcgi
