@@ -128,8 +128,7 @@ if [[ -f "${this_script_path}/auto_setup_on" ]]; then
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup
   fi
-elif [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
-  cat "${this_script_path}/manual-configs.nginx"
+elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
   read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup manual
@@ -205,7 +204,12 @@ validate_cache_paths() {
   done
 
   if [[ ${#invalid_paths[@]} -gt 0 ]]; then
-    echo -e "\033[0;36mError: The following cache paths are critical system directories or root directory and cannot be used:\033[0m"
+    if [[ -s "${this_script_path}/manual-configs.nginx" ]]; then
+      echo -e "\033[0;36mError: The following cache paths in 'manual-configs.nginx' file are critical system directories or root directory and cannot be used:\033[0m"
+    else
+      echo -e "\033[0;36mError: The automatically detected following cache paths are critical system directories or root directory and cannot be used:\033[0m"
+    fi
+    
     for invalid in "${invalid_paths[@]}"; do
       echo -e "\033[0;31m$invalid\033[0m"
     done
@@ -324,14 +328,14 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Validate the format of the line (expects "user cache_path")
     if [[ "$(echo "$line" | awk '{print NF}')" -ne 2 ]]; then
-      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-config.nginx'. Each line must contain only two fields: 'user' and 'fcgi path'."
+      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-configs.nginx'. Each line must contain only two fields: 'PHP_FPM_USER NGINX_CACHE_PATH'"
       echo "Invalid line: $line"
       exit 1
     fi
 
-    # Validate the format of the line (expects "user cache_path")
+    # Validate the format of the line (expects "PHP_FPM_USER NGINX_CACHE_PATH")
     if [[ ! "$line" =~ ^[[:alnum:]_-]+\ [[:print:]]+$ ]]; then
-      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-config.nginx'. Each line must be in the format 'user cache_path'."
+      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-configs.nginx'. Each line must be in the format 'PHP_FPM_USER NGINX_CACHE_PATH'"
       echo "Invalid line: $line"
       exit 1
     fi
@@ -339,6 +343,11 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     # Extract PHP-FPM user and FastCGI cache path from each line
     user=$(echo "$line" | awk '{print $1}')
     cache_path=$(echo "$line" | awk '{print $2}')
+
+    # Validate the Nginx FastCGI cache path
+    if ! validate_cache_paths "$cache_path"; then
+      exit 1
+    fi
 
     # Check if the directory exists
     if [[ ! -d "$cache_path" ]]; then
