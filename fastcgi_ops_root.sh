@@ -117,6 +117,15 @@ restart_auto_setup() {
   [[ -n "${setup_flag}" ]] && rm -f "${setup_flag}" > /dev/null 2>&1
   [[ -n "${setup_flag_nginx}" ]] && rm -f "${setup_flag_nginx}" > /dev/null 2>&1
 
+  # Stop and remove systemd service
+  service_file="/etc/systemd/system/npp-wordpress.service"
+  if [[ -f "${service_file}" ]]; then
+    systemctl stop npp-wordpress.service > /dev/null 2>&1
+    systemctl disable npp-wordpress.service > /dev/null 2>&1
+    rm -f "${service_file}"
+    systemctl daemon-reload > /dev/null 2>&1
+  fi
+
   # Restart the setup
   exec bash "${this_script_path}/${this_script_name}"
 }
@@ -300,10 +309,8 @@ NGINX_
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
-    systemctl stop npp-wordpress.service > /dev/null 2>&1
-    # force to stop service immediately
     if systemctl is-active --quiet npp-wordpress.service; then
-      systemctl kill npp-wordpress.service > /dev/null 2>&1
+      systemctl stop npp-wordpress.service > /dev/null 2>&1
     fi
     systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
   fi
