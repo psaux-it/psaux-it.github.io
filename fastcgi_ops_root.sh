@@ -29,9 +29,10 @@ manual_setup() {
   echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
   # Provide instructions for manual configuration
   echo -e "\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min the same directory as this script."
-  echo -e "Each entry should follow the format: 'PHP-FPM_user FastCGI_cache_path', with one entry per virtual host."
+  echo -e "Each entry should follow the format: 'PHP-FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
+  echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
   echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
-  echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
+  echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m manually."
   exit 1
 }
 
@@ -106,13 +107,15 @@ this_script_path="${this_script_path%%+(/)}"
 # Restart setup
 restart_auto_setup() {
   if [[ $1 == "manual" ]]; then
-    setup_flag="${this_script_path}/manual-configs.nginx"
+    setup_flag_nginx="${this_script_path}/manual-configs.nginx"
+    setup_flag="${this_script_path}/manual_setup_on"
   else
     setup_flag="${this_script_path}/auto_setup_on"
   fi
 
-  # Remove the completed setup lock file
-  rm -f "$setup_flag"
+  # Remove the completed setup lock files
+  [[ -n "${setup_flag}" ]] && rm -f "${setup_flag}" > /dev/null 2>&1
+  [[ -n "${setup_flag_nginx}" ]] && rm -f "${setup_flag_nginx}" > /dev/null 2>&1
 
   # Restart the setup
   exec bash "${this_script_path}/${this_script_name}"
@@ -126,7 +129,8 @@ if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     restart_auto_setup
   fi
 elif [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
-  read -rp $'\e[96mManual setup via "manual-configs.nginx" has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+  cat "${this_script_path}/manual-configs.nginx"
+  read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup manual
   fi
