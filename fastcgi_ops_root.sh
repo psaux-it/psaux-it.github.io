@@ -104,6 +104,10 @@ fi
 shopt -s extglob
 this_script_path="${this_script_path%%+(/)}"
 
+# systemd service files
+service_file_new="/etc/systemd/system/npp-wordpress.service"
+service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
+
 # Restart setup
 restart_auto_setup() {
   if [[ $1 == "manual" ]]; then
@@ -118,8 +122,6 @@ restart_auto_setup() {
   [[ -n "${setup_flag_nginx}" ]] && rm -f "${setup_flag_nginx}" > /dev/null 2>&1
 
   # Stop and remove systemd service
-  service_file_new="/etc/systemd/system/npp-wordpress.service"
-  service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
   if [[ -f "${service_file_new}" ]]; then
     systemctl stop npp-wordpress.service > /dev/null 2>&1
     systemctl disable npp-wordpress.service > /dev/null 2>&1
@@ -150,6 +152,11 @@ elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
   read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
   if [[ $restart_confirm =~ ^[Yy]$ ]]; then
     restart_auto_setup manual
+  fi
+elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
+  read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
+  if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+    restart_auto_setup
   fi
 fi
 
