@@ -118,11 +118,20 @@ restart_auto_setup() {
   [[ -n "${setup_flag_nginx}" ]] && rm -f "${setup_flag_nginx}" > /dev/null 2>&1
 
   # Stop and remove systemd service
-  service_file="/etc/systemd/system/npp-wordpress.service"
-  if [[ -f "${service_file}" ]]; then
+  service_file_new="/etc/systemd/system/npp-wordpress.service"
+  service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
+  if [[ -f "${service_file_new}" ]]; then
     systemctl stop npp-wordpress.service > /dev/null 2>&1
     systemctl disable npp-wordpress.service > /dev/null 2>&1
-    rm -f "${service_file}"
+    rm -f "${service_file_new}"
+    systemctl daemon-reload > /dev/null 2>&1
+  fi
+
+  # Migrate old service file as name changed -- wp-fcgi-notify.service --> npp-wordpress.service
+  if [[ -f "${service_file_old}" ]]; then
+    systemctl stop wp-fcgi-notify.service > /dev/null 2>&1
+    systemctl disable wp-fcgi-notify.service > /dev/null 2>&1
+    rm -f "${service_file_old}"
     systemctl daemon-reload > /dev/null 2>&1
   fi
 
