@@ -279,7 +279,7 @@ check_and_start_systemd_service() {
 [Unit]
 Description=NPP Wordpress Plugin Cache Operations Service
 After=network.target nginx.service local-fs.target
-Wants=nginx.service
+Requires=nginx.service
 
 [Service]
 KillSignal=SIGKILL
