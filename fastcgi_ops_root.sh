@@ -159,6 +159,8 @@ if [[ -t 0 ]]; then
     read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
+    else
+      exit 0
     fi
   fi
 fi
