@@ -142,21 +142,24 @@ restart_auto_setup() {
 }
 
 # Prompt restart setup
-if [[ -f "${this_script_path}/auto_setup_on" ]]; then
-  # User prompt for fresh restart auto setup
-  read -rp $'\e[96mAuto setup has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
-  if [[ $restart_confirm =~ ^[Yy]$ ]]; then
-    restart_auto_setup
-  fi
-elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
-  read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
-  if [[ $restart_confirm =~ ^[Yy]$ ]]; then
-    restart_auto_setup manual
-  fi
-elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
-  read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
-  if [[ $restart_confirm =~ ^[Yy]$ ]]; then
-    restart_auto_setup
+# Check if running in an interactive terminal
+if [[ -t 0 ]]; then
+  if [[ -f "${this_script_path}/auto_setup_on" ]]; then
+    # User prompt for fresh restart auto setup
+    read -rp $'\e[96mAuto setup has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+      restart_auto_setup
+    fi
+  elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
+    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+      restart_auto_setup manual
+    fi
+  elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
+    read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
+    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+      restart_auto_setup
+    fi
   fi
 fi
 
