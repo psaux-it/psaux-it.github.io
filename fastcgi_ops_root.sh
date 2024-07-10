@@ -145,25 +145,44 @@ restart_auto_setup() {
   exec bash "${this_script_path}/${this_script_name}"
 }
 
-# Prompt restart setup
+# Prompt restart setup or apply changes in current setup
 # Check if running in an interactive terminal
 if [[ -t 0 ]]; then
   if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     # User prompt for fresh restart auto setup
-    read -rp $'\e[96mAuto setup has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply nginx.conf changes, select [N/n] [Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
+    else
+      # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified nginx.conf)
+      systemctl restart npp-wordpress.service > /dev/null 2>&1
+      # Check if the service restarted successfully
+      if systemctl is-active --quiet npp-wordpress.service; then
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be active and listening via \e[93msystemd\e[0m."
+      else
+        echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
+      fi
     fi
   elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
-    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. Do you want to restart the setup? [Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply manual-configs.nginx changes, select [N/n] [Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup manual
+    else
+      # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified manual-configs.nginx)
+      systemctl restart npp-wordpress.service > /dev/null 2>&1
+      # Check if the service restarted successfully
+      if systemctl is-active --quiet npp-wordpress.service; then
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be active and listening via \e[93msystemd\e[0m."
+      else
+        echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
+      fi
     fi
   elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
     read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
     else
+      # Prevent multiple setup in different locations
       exit 0
     fi
   fi
@@ -347,6 +366,9 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     echo -e "\e[91mError:\e[0m The manual configuration file 'manual-configs.nginx' is empty. Please provide configuration details and try again."
     exit 1
   fi
+
+  # Reset/clear associative array that we continue with manual setup
+  declare -A fcgi=()
 
   # Read manual configuration file
   while IFS= read -r line; do
