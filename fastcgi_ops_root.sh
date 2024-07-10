@@ -162,6 +162,7 @@ if [[ -t 0 ]]; then
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         # Add a short delay to ensure all log entries are captured
         sleep 2
+        # Print the currently listening Nginx Cache Paths
         systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
           gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
           print "\033[36m" $2 "\033[0m"
@@ -186,6 +187,7 @@ if [[ -t 0 ]]; then
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         # Add a short delay to ensure all log entries are captured
         sleep 2
+        # Print the currently listening Nginx Cache Paths
         systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
           gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
           print "\033[36m" $2 "\033[0m"
@@ -278,12 +280,15 @@ validate_cache_paths() {
 
   if [[ ${#invalid_paths[@]} -gt 0 ]]; then
     if [[ -s "${this_script_path}/manual-configs.nginx" ]]; then
-      echo -e "\033[0;36mError: The following cache paths in 'manual-configs.nginx' file are critical system directories or root directory and cannot be used:\033[0m"
+      echo -e "\033[0;36m\033[91mError:\033[0m \033[0;36mThe following Nginx Cache Paths in '\033[35mmanual-configs.nginx\033[0;36m' file are critical system directories or root directory and cannot be used:\033[0m"
+      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
     else
-      echo -e "\033[0;36mError: The automatically detected following cache paths are critical system directories or root directory and cannot be used:\033[0m"
+      echo -e "\033[91mError:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m"
+      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
     fi
 
     for invalid in "${invalid_paths[@]}"; do
+      echo ""
       echo -e "\033[0;31m$invalid\033[0m"
     done
     return 1
@@ -453,6 +458,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Check setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
+    # Print the currently listening Nginx Cache Paths
     sleep 2
     journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
       gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
@@ -505,6 +511,7 @@ else
     read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. [Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
+      # Print the currently listening Nginx Cache Paths
       sleep 2
       journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
         gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
@@ -594,7 +601,7 @@ inotify-start() {
   # Check if inotifywait processes are alive
   for path in "${!fcgi[@]}"; do
     if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "All done! Started to listen to Nginx FastCGI Cache path (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER."
+      echo "All done! Started to listen to Nginx FastCGI Cache Path: (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER: (${path}) ."
     else
       echo "Unknown error occurred during cache listen event."
     fi
