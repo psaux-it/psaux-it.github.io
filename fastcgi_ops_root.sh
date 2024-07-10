@@ -150,7 +150,7 @@ restart_auto_setup() {
 if [[ -t 0 ]]; then
   if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     # User prompt for fresh restart auto setup
-    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[93nginx.conf\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[93mnginx.conf\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
     elif [[ $restart_confirm =~ ^[Nn]$ ]]; then
@@ -159,6 +159,13 @@ if [[ -t 0 ]]; then
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
+        echo ""
+        # Add a short delay to ensure all log entries are captured
+        sleep 2
+        systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
+          gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
+          print "\033[36m" $2 "\033[0m"
+        }'
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -175,6 +182,13 @@ if [[ -t 0 ]]; then
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
+        echo ""
+        # Add a short delay to ensure all log entries are captured
+        sleep 2
+        systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
+          gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
+          print "\033[36m" $2 "\033[0m"
+        }'
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -553,7 +567,7 @@ inotify-start() {
   # Check if inotifywait processes are alive
   for path in "${!fcgi[@]}"; do
     if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "All done! Started to listen FastCGI cache folder (${fcgi[$path]}) events."
+      echo "All done! Started to listen Nginx FastCGI Cache path (${fcgi[$path]}) events."
     else
       echo "Unknown error occurred during cache listen event."
     fi
