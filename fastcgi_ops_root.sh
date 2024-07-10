@@ -17,12 +17,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # SCRIPT DESCRIPTION:
+#####################
 # This script manages Nginx FastCGI cache operations for WordPress websites running on Nginx.
 # This script is written for "FastCGI Cache Purge and Preload for Nginx" Wordpress Plugin.
 # It automates cache purging and preload tasks by monitoring changes in FastCGI cache
 # directories using inotifywait. Additionally, it sets up ACL permissions for PHP-FPM users,
 # ensuring they have necessary access for cache operations. The script also integrates with
 # systemd to manage a background service for continuous cache management.
+
+# After you completed the setup (auto or manual) you can manage npp-wordpress systemd service
+# to start and stop inotifywait/setfacl operations for Nginx Cache Paths.
 
 # Manual setup instructions
 manual_setup() {
@@ -211,7 +215,7 @@ extract_fastcgi_cache_paths() {
   } | sort | uniq
 }
 
-# Function to validate FastCGI cache paths
+# Function to validate FastCGI cache paths for safety
 validate_cache_paths() {
   local path_list=("$@")
   local invalid_paths=()
@@ -530,7 +534,8 @@ inotify-start() {
   done
 }
 
-# stop listening fastcgi cache paths
+# stop on-going preload actions and clear cache
+# the rest of the process (killing child processes) will handled by systemd via stop command
 inotify-stop() {
   # Kill on-going preload process for all websites first
   for load in "${!fcgi[@]}"; do
@@ -557,21 +562,6 @@ inotify-stop() {
       echo "FastCGI cache purged for website: $cache"
     else
       echo "FastCGI cache directory not found for website: $cache to clear cache"
-    fi
-  done
-
-  # Kill inotifywait processes and --wp-inotify-start processes
-  for listen in "${!fcgi[@]}"; do
-    # Kill inotifywait processes
-    read -r -a INOTIFY_PIDS <<< "$(pgrep -f "inotifywait.*${fcgi[$listen]}")"
-    if (( "${#INOTIFY_PIDS[@]}" )); then
-      for pid in "${INOTIFY_PIDS[@]}"; do
-        if ps -p "${pid}" >/dev/null 2>&1; then
-          kill -9 "$pid" && echo "inotifywait process $pid for website $listen is killed!"
-        fi
-      done
-    else
-      echo "No inotify process found for website $listen"
     fi
   done
 }
