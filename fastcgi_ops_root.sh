@@ -367,6 +367,13 @@ NGINX_
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
       echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
+      echo ""
+      # Add a short delay to ensure all log entries are captured
+      sleep 2
+      systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
+        gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
+        print "\033[36m" $2 "\033[0m"
+      }'
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
@@ -567,7 +574,7 @@ inotify-start() {
   # Check if inotifywait processes are alive
   for path in "${!fcgi[@]}"; do
     if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "All done! Started to listen Nginx FastCGI Cache path (${fcgi[$path]}) events."
+      echo "All done! Started to listen to Nginx FastCGI Cache path (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER."
     else
       echo "Unknown error occurred during cache listen event."
     fi
