@@ -150,10 +150,10 @@ restart_auto_setup() {
 if [[ -t 0 ]]; then
   if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     # User prompt for fresh restart auto setup
-    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[93mnginx.conf\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
-    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[93mnginx.conf\e[0m \e[96mchanges, select [A/a] \e[92m[R/A]: \e[0m' restart_confirm
+    if [[ $restart_confirm =~ ^[Rr]$ ]]; then
       restart_auto_setup
-    elif [[ $restart_confirm =~ ^[Nn]$ ]]; then
+    elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified nginx.conf)
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
@@ -173,10 +173,10 @@ if [[ -t 0 ]]; then
       exit 0
     fi
   elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
-    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[35mmanual-configs.nginx\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
-    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[35mmanual-configs.nginx\e[0m \e[96mchanges, select [A/a] \e[92m[R/A]: \e[0m' restart_confirm
+    if [[ $restart_confirm =~ ^[Rr]$ ]]; then
       restart_auto_setup manual
-    elif [[ $restart_confirm =~ ^[Nn]$ ]]; then
+    elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified manual-configs.nginx)
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
