@@ -150,35 +150,39 @@ restart_auto_setup() {
 if [[ -t 0 ]]; then
   if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     # User prompt for fresh restart auto setup
-    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply nginx.conf changes, select [N/n] [Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[93nginx.conf\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
-    else
+    elif [[ $restart_confirm =~ ^[Nn]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified nginx.conf)
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be active and listening via \e[93msystemd\e[0m."
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
+    else
+      exit 0
     fi
   elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
-    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply manual-configs.nginx changes, select [N/n] [Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [Y/y]. If you want to just apply \e[35mmanual-configs.nginx\e[0m \e[96mchanges, select [N/n] \e[92m[Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup manual
-    else
+    elif [[ $restart_confirm =~ ^[Nn]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified manual-configs.nginx)
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be active and listening via \e[93msystemd\e[0m."
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
+    else
+      exit 0
     fi
   elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
-    read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? [Y/n]: \e[0m' restart_confirm
+    read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? \e[92m[Y/n]: \e[0m' restart_confirm
     if [[ $restart_confirm =~ ^[Yy]$ ]]; then
       restart_auto_setup
     else
