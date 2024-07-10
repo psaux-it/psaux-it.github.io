@@ -338,42 +338,47 @@ check_and_start_systemd_service() {
   if [[ ! -f "$service_file" ]]; then
     # Generate systemd service file
     cat <<- NGINX_ > "$service_file"
-[Unit]
-Description=NPP Wordpress Plugin Cache Operations Service
-After=network.target nginx.service local-fs.target
-Requires=nginx.service
+    [Unit]
+    Description=NPP Wordpress Plugin Cache Operations Service
+    After=network.target nginx.service local-fs.target
+    Requires=nginx.service
 
-[Service]
-KillSignal=SIGKILL
-TimeoutStopSec=5
-Type=simple
-RemainAfterExit=yes
-User=root
-Group=root
-ProtectSystem=full
-ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-start
-ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
+    [Service]
+    KillSignal=SIGKILL
+    TimeoutStopSec=5
+    Type=simple
+    RemainAfterExit=yes
+    User=root
+    Group=root
+    ProtectSystem=full
+    ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-start
+    ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
 
-[Install]
-WantedBy=multi-user.target
-NGINX_
+    [Install]
+    WantedBy=multi-user.target
+    NGINX_
+
+    # Check if generating the service file was successful
+    if [[ $? -ne 0 ]]; then
+      echo -e "\e[91mError:\e[0m Failed to create systemd service file."
+      exit 1
+    fi
 
     # Reload systemd
-    systemctl daemon-reload > /dev/null 2>&1
+    systemctl daemon-reload > /dev/null 2>&1 || {
+      echo -e "\e[91mError:\e[0m Failed to reload systemd daemon."
+      exit 1
+    }
 
     # Enable and start the service
-    systemctl enable --now npp-wordpress.service > /dev/null 2>&1
+    systemctl enable --now npp-wordpress.service > /dev/null 2>&1 || {
+      echo -e "\e[91mError:\e[0m Failed to enable and start systemd service."
+      exit 1
+    }
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
       echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
-      echo ""
-      # Add a short delay to ensure all log entries are captured
-      sleep 2
-      systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
-        gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
-        print "\033[36m" $2 "\033[0m"
-      }'
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
