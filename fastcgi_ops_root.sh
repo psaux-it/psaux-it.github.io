@@ -158,14 +158,15 @@ if [[ -t 0 ]]; then
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         echo ""
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         # Add a short delay to ensure all log entries are captured
         sleep 2
         systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
           gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
           print "\033[36m" $2 "\033[0m"
         }'
+	echo ""
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -181,14 +182,15 @@ if [[ -t 0 ]]; then
       systemctl restart npp-wordpress.service > /dev/null 2>&1
       # Check if the service restarted successfully
       if systemctl is-active --quiet npp-wordpress.service; then
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         echo ""
+        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         # Add a short delay to ensure all log entries are captured
         sleep 2
         systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
           gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
           print "\033[36m" $2 "\033[0m"
         }'
+	echo ""
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -280,7 +282,7 @@ validate_cache_paths() {
     else
       echo -e "\033[0;36mError: The automatically detected following cache paths are critical system directories or root directory and cannot be used:\033[0m"
     fi
-    
+
     for invalid in "${invalid_paths[@]}"; do
       echo -e "\033[0;31m$invalid\033[0m"
     done
@@ -378,6 +380,7 @@ check_and_start_systemd_service() {
 
     # Check if the service started successfully
     if systemctl is-active --quiet npp-wordpress.service; then
+      echo ""
       echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
@@ -450,6 +453,12 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Check setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
+    sleep 2
+    journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
+      gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
+      print "\033[36m" $2 "\033[0m"
+    }'
+    echo ""
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
@@ -496,6 +505,12 @@ else
     read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. [Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
+      sleep 2
+      journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
+        gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
+        print "\033[36m" $2 "\033[0m"
+      }'
+      echo ""
     else
       manual_setup
     fi
