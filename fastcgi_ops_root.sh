@@ -556,8 +556,8 @@ inotify-start() {
   done
 }
 
-# stop on-going preload actions and clear cache
-# the rest of the process (killing child processes) will handled by systemd via stop command
+# stop on-going preload actions
+# the rest of the stuff (killing child processes) will handled by systemd via stop command
 inotify-stop() {
   # Kill on-going preload process for all websites first
   for load in "${!fcgi[@]}"; do
@@ -572,18 +572,6 @@ inotify-stop() {
       done
     else
       echo "No cache preload process found for website $load"
-    fi
-  done
-
-  # Then purge fcgi cache for all websites to keep cache integrity clean
-  # That means on every system reboot (systemctl reboot) all fcgi cache will cleaned for all vhosts
-  # This is somehow drawback but keeping cache integrity is more important
-  for cache in "${!fcgi[@]}"; do
-    if [[ -d "${fcgi[$cache]}" ]]; then
-      rm -rf --preserve-root "${fcgi[$cache]:?}"/*
-      echo "FastCGI cache purged for website: $cache"
-    else
-      echo "FastCGI cache directory not found for website: $cache to clear cache"
     fi
   done
 }
