@@ -336,27 +336,27 @@ check_and_start_systemd_service() {
   service_file="/etc/systemd/system/npp-wordpress.service"
 
   if [[ ! -f "$service_file" ]]; then
-		# Generate systemd service file
-		cat <<- NGINX_ > "$service_file"
-		[Unit]
-		Description=NPP Wordpress Plugin Cache Operations Service
-		After=network.target nginx.service local-fs.target
-		Requires=nginx.service
+	# Generate systemd service file
+	cat <<- NGINX_ > "$service_file"
+	[Unit]
+	Description=NPP Wordpress Plugin Cache Operations Service
+	After=network.target nginx.service local-fs.target
+	Requires=nginx.service
 
-		[Service]
-		KillSignal=SIGKILL
-		TimeoutStopSec=5
-		Type=simple
-		RemainAfterExit=yes
-		User=root
-		Group=root
-		ProtectSystem=full
-		ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-start
-		ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
+	[Service]
+	KillSignal=SIGKILL
+	TimeoutStopSec=5
+	Type=simple
+	RemainAfterExit=yes
+	User=root
+	Group=root
+	ProtectSystem=full
+	ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-start
+	ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
 
-		[Install]
-		WantedBy=multi-user.target
-		NGINX_
+	[Install]
+	WantedBy=multi-user.target
+	NGINX_
 
     # Check if generating the service file was successful
     if [[ $? -ne 0 ]]; then
