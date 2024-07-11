@@ -241,9 +241,6 @@ detect_nginx_conf() {
   fi
 }
 
-# Detect nginx.conf if user not selected manual setup
-[[ ! -f "${this_script_path}/manual-configs.nginx" ]] && detect_nginx_conf
-
 # Function to extract FastCGI cache paths from NGINX configuration files
 extract_fastcgi_cache_paths() {
   {
@@ -310,7 +307,9 @@ validate_cache_paths() {
 
 # Auto detection stuff
 if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
-  # Extract unique FastCGI cache paths from Nginx config files
+  # Get nginx.conf
+  detect_nginx_conf
+  # Extract FastCGI Cache Paths from nginx.conf
   FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
   # Find active vhosts
   ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
