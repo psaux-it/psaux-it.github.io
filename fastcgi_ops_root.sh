@@ -58,7 +58,7 @@ help() {
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------${reset}\n"
 }
 
-# Check if script is executed as root or with sudo
+# Check if script is executed as root
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root"
     exit 1
@@ -145,6 +145,21 @@ restart_auto_setup() {
   exec bash "${this_script_path}/${this_script_name}"
 }
 
+# Print the currently listening Nginx Cache Paths
+print_nginx_cache_paths() {
+  # Add a short delay to ensure all log entries are captured
+  sleep 2
+  journalctl -n 3 -u npp-wordpress --no-pager \
+    | grep -E '(Started NPP|All done!)' \
+    | sed -E 's/.*?(Started NPP|All done!) /\1/' \
+    | awk '{
+      gsub(/\(/, "\x1b[33m(", $0);
+      gsub(/\)/, ")\x1b[0m\x1b[36m", $0);
+      print "\x1b[36m" $0 "\x1b[0m"
+    }'
+  echo ""
+}
+
 # Prompt restart setup or apply changes in current setup
 # Check if running in an interactive terminal
 if [[ -t 0 ]]; then
@@ -160,14 +175,7 @@ if [[ -t 0 ]]; then
       if systemctl is-active --quiet npp-wordpress.service; then
         echo ""
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
-        # Add a short delay to ensure all log entries are captured
-        sleep 2
-        # Print the currently listening Nginx Cache Paths
-        systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
-          gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
-          print "\033[36m" $2 "\033[0m"
-        }'
-	echo ""
+        print_nginx_cache_paths
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -185,14 +193,7 @@ if [[ -t 0 ]]; then
       if systemctl is-active --quiet npp-wordpress.service; then
         echo ""
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
-        # Add a short delay to ensure all log entries are captured
-        sleep 2
-        # Print the currently listening Nginx Cache Paths
-        systemctl status npp-wordpress | awk -F': ' '/Started|All done!/{
-          gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
-          print "\033[36m" $2 "\033[0m"
-        }'
-	echo ""
+        print_nginx_cache_paths
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
       fi
@@ -223,13 +224,23 @@ detect_nginx_conf() {
     fi
   done
   if [[ -z "$NGINX_CONF" ]]; then
-    echo "Nginx configuration file (nginx.conf) not found in default paths."
-    read -rp "Please enter the full path to nginx.conf: " NGINX_CONF
+    echo -e "\e[31mError: Nginx configuration file (\e[33mnginx.conf\e[31m) not found in default paths.\e[0m"
+    echo -e "\e[36mPlease create a symbolic link from your original \e[33mnginx.conf\e[36m to \e[33m/etc/nginx/nginx.conf\e[36m, or use manual setup.\e[0m"
+    echo -e "\e[36mExample: ln -s \e[33m/path/to/your/original/nginx.conf\e[36m \e[33m/etc/nginx/nginx.conf\e[0m"
+    echo ""
+    # Provide instructions for manual configuration
+    echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
+    echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
+    echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
+    echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
+    echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
+    echo ""
+    exit 1
   fi
 }
 
-# Detect nginx.conf
-detect_nginx_conf
+# Detect nginx.conf if user not selected manual setup
+[[ ! -f "${this_script_path}/manual-configs.nginx" ]] && detect_nginx_conf
 
 # Function to extract FastCGI cache paths from NGINX configuration files
 extract_fastcgi_cache_paths() {
@@ -295,47 +306,50 @@ validate_cache_paths() {
   fi
 }
 
-# Extract unique FastCGI cache paths from Nginx config files
-FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
-# Find active vhosts
-ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
-# Find all php-fpm users
-PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
+# Auto detection stuff
+if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
+  # Extract unique FastCGI cache paths from Nginx config files
+  FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
+  # Find active vhosts
+  ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
+  # Find all php-fpm users
+  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
-# Validate the found Nginx FastCGI cache paths
-if ! validate_cache_paths ${FASTCGI_CACHE_PATHS}; then
-  exit 1
-fi
-
-# Associative array to store php-fpm user and fastcgi cache path
-declare -A fcgi
-
-# Loop through active vhosts
-while IFS= read -r VHOST; do
-  ACTIVE_VHOSTS+=("$VHOST")
-  # Extract PHP-FPM users from running processes, excluding root
-  while read -r user; do
-    ACTIVE_PHP_FPM_USERS+=("$user")
-  done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-done <<< "$ACTIVE_VHOSTS"
-
-# Check if the PHP-FPM user's name is present in the FastCGI cache path
-for PHP_FPM_USER in $PHP_FPM_USERS; do
-  for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
-    if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
-      fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
-      break
-    fi
-  done
-done
-
-# Check if the user exists
-for user in "${!fcgi[@]}"; do
-  if ! id "$user" &>/dev/null; then
-    echo -e "\e[91mError:\e[0m User: $user does not exist. Please ensure the user exists and try again."
+  # Validate the found Nginx FastCGI cache paths
+  if ! validate_cache_paths ${FASTCGI_CACHE_PATHS}; then
     exit 1
   fi
-done
+
+  # Associative array to store php-fpm user and fastcgi cache path
+  declare -A fcgi
+
+  # Loop through active vhosts
+  while IFS= read -r VHOST; do
+    ACTIVE_VHOSTS+=("$VHOST")
+    # Extract PHP-FPM users from running processes, excluding root
+    while read -r user; do
+      ACTIVE_PHP_FPM_USERS+=("$user")
+    done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+  done <<< "$ACTIVE_VHOSTS"
+
+  # Check if the PHP-FPM user's name is present in the FastCGI cache path
+  for PHP_FPM_USER in $PHP_FPM_USERS; do
+    for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
+      if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
+        fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
+        break
+      fi
+    done
+  done
+
+  # Check if the user exists
+  for user in "${!fcgi[@]}"; do
+    if ! id "$user" &>/dev/null; then
+      echo -e "\e[91mError:\e[0m User: $user does not exist. Please ensure the user exists and try again."
+      exit 1
+    fi
+  done
+}
 
 # Systemd operations
 check_and_start_systemd_service() {
@@ -458,13 +472,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Check setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
-    # Print the currently listening Nginx Cache Paths
-    sleep 2
-    journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
-      gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
-      print "\033[36m" $2 "\033[0m"
-    }'
-    echo ""
+    print_nginx_cache_paths
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
@@ -508,16 +516,10 @@ else
     for user in "${!fcgi[@]}"; do
       echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
-    read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. [Y/n]: \e[0m' confirm
+    read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. \e[92m[Y/n]: \e[0m' confirm
     if [[ $confirm =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
-      # Print the currently listening Nginx Cache Paths
-      sleep 2
-      journalctl -n 3 -u npp-wordpress --no-pager | awk -F': ' '/Started|All done!/{
-        gsub(/\(([^\)]+)\)/, "\033[93m(&)\033[36m")
-        print "\033[36m" $2 "\033[0m"
-      }'
-      echo ""
+      print_nginx_cache_paths
     else
       manual_setup
     fi
