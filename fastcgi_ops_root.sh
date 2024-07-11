@@ -224,11 +224,13 @@ detect_nginx_conf() {
     fi
   done
   if [[ -z "$NGINX_CONF" ]]; then
-    echo -e "\e[31mError: Nginx configuration file (\e[33mnginx.conf\e[31m) not found in default paths.\e[0m"
-    echo -e "\e[36mPlease create a symbolic link from your original \e[33mnginx.conf\e[36m to \e[33m/etc/nginx/nginx.conf\e[36m, or use manual setup.\e[0m"
-    echo -e "\e[36mExample: ln -s \e[33m/path/to/your/original/nginx.conf\e[36m \e[33m/etc/nginx/nginx.conf\e[0m"
     echo ""
+    echo -e "\e[31mError: Nginx configuration file (\e[33mnginx.conf\e[31m) not found in default paths.\e[0m"
+    echo -e "\e[36mPlease create a symbolic link from your original \e[33mnginx.conf\e[36m to \e[33m/etc/nginx/nginx.conf\e[36m, or continue with manual setup.\e[0m"
+    echo -e "\e[36mExample: ln -s \e[33m/path/to/your/original/nginx.conf\e[36m \e[33m/etc/nginx/nginx.conf\e[0m"
     # Provide instructions for manual configuration
+    echo ""
+    echo -e "\e[35mManual Setup Instructions\e[0m\n\e[36m#########################\e[0m"
     echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
     echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
     echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
