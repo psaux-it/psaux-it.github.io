@@ -349,7 +349,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
       exit 1
     fi
   done
-}
+fi
 
 # Systemd operations
 check_and_start_systemd_service() {
