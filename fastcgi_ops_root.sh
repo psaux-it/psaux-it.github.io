@@ -253,6 +253,7 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
     rm "${includedir_path:?}/${NPP_SUDOERS:?}"
     return 1
   fi
+  return 0
 }
 
 # Restart setup
