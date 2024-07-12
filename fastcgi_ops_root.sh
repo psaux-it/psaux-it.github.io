@@ -232,6 +232,12 @@ find_create_includedir() {
   return 0
 }
 
+# Automate the process of granting specific sudo permissions to the PHP-FPM process owner users on a system.
+# These permissions specifically authorize the execution of systemctl commands (start, stop, status) related to the npp_wordpress systemd service by PHP-FPM process owners.
+# By granting these permissions, the goal is to allow the npp_wordpress systemd service to be controlled directly from the WordPress admin dashboard, enhancing operational flexibility and automation.
+# This automation enhances security by limiting sudo access to only specific systemd service management tasks.
+# After successful integration NPP users will be able to manage (start, stop, status) the 'npp-wordpress.service' on WP admin dashboard NPP plugin settings page.
+# This implementation not restrictly necessarry for functional cache purge & preload actions, but it is nice to have this ability that control main plugin systemd service 'npp-wordpress.service' on admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
   if find_create_includedir; then
@@ -677,6 +683,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
         echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
       done
     fi
+    echo ""
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
@@ -730,6 +737,7 @@ else
           echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
         done
       fi
+      echo ""
     else
       manual_setup
     fi
