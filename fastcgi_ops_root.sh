@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (C) 2021 Hasan CALISIR <hasan.calisir@psauxit.com>
+# Copyright (C) 2024 Hasan CALISIR <hasan.calisir@psauxit.com>
 # Distributed under the GNU General Public License, version 2.0.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,15 +18,20 @@
 
 # SCRIPT DESCRIPTION:
 #####################
-# This script manages Nginx FastCGI cache operations for WordPress websites running on Nginx.
 # This script is written for "FastCGI Cache Purge and Preload for Nginx" Wordpress Plugin.
-# It automates cache purging and preload tasks by monitoring changes in FastCGI cache
-# directories using inotifywait. Additionally, it sets up ACL permissions for PHP-FPM users,
-# ensuring they have necessary access for cache operations. The script also integrates with
-# systemd to manage a background service for continuous cache management.
+# URL: https://wordpress.org/plugins/fastcgi-cache-purge-and-preload-nginx/
+# This script attempts to automatically match and grant (via setfacl) permissions for PHP-FPM-USER (as known, process owner or website-user) along with their associated Nginx Cache Paths.
+# If it cannot automatically match the PHP-FPM-USER along with their associated Nginx Cache Path, it offers an easy manual setup option with the 'manual-configs.nginx' file.
+# Mainly, in case your current web server setup involves two distinct users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER,
+# the solution proposed by this script involves combining Linux server side tools 'inotifywait' with 'setfacl' to automatically grant write permissions to the PHP-FPM-USER
+# for the corresponding Nginx Cache Paths (listening cache events), which are matched either automatically or via a manual configuration file.
+# This approach is an alternative to external Nginx modules like Cache Purge module for purge operations.
+# This script create npp-wordpress sytemd service to manage grant permission for purge and preload actions.
 
-# After you completed the setup (auto or manual) you can manage npp-wordpress systemd service
-# to start and stop inotifywait/setfacl operations for Nginx Cache Paths.
+# After completing the setup (whether automatic or manual), you can manage the automatically created
+# 'npp-wordpress' systemd service on the WP admin dashboard NPP plugin settings page.
+# This allows you to start and stop inotifywait/setfacl operations (via systemd) for Nginx Cache Path directly
+# from the front-end for associated PHP-FPM-USER
 
 # Manual setup instructions
 manual_setup() {
@@ -237,7 +242,8 @@ find_create_includedir() {
 # By granting these permissions, the goal is to allow the 'npp-wordpress' systemd service to be controlled directly from the WordPress admin dashboard, enhancing operational flexibility and automation.
 # This automation enhances security by limiting sudo access to only specific systemd service management tasks.
 # After successful integration NPP users will be able to manage (start, stop, status) the 'npp-wordpress' systemd service on WP admin dashboard NPP plugin settings page.
-# This implementation not restrictly necessarry for functional cache purge & preload actions, but it is nice to have this ability that control main plugin systemd service 'npp-wordpress' on WP admin dashboard.
+# This implementation not restrictly necessarry for functional cache purge & preload actions and not breaks default setup process,
+# but it is nice to have this ability that control main plugin systemd service 'npp-wordpress' on WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
   if find_create_includedir; then
@@ -254,7 +260,7 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
     return 1
   fi
 
-  # Check the integrity, checking main sudoers file is enough
+  # Check the integrity, checking main sudoers file is enough it also checks the includedir paths
   if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
     # Revert back changes
     rm "${includedir_path:?}/${NPP_SUDOERS:?}"
