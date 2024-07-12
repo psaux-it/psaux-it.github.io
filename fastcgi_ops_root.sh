@@ -108,9 +108,152 @@ fi
 shopt -s extglob
 this_script_path="${this_script_path%%+(/)}"
 
-# systemd service files
+# Systemd service files
 service_file_new="/etc/systemd/system/npp-wordpress.service"
 service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
+
+# Define the main sudoers file and tmp/backup paths
+SUDOERS_FILE="/etc/sudoers"
+TEMP_FILE="/etc/sudoers.tmp"
+BACKUP_FILE="/etc/sudoers.bak"
+
+# Define NPP Wordpress sudoers config file
+NPP_SUDOERS="npp_wordpress"
+
+# Define the @includedir path if it does not already exist.
+# We use a path other than "/etc/sudoers.d" to avoid overriding the user's current setup.
+# Users may avoid using "/etc/sudoers.d" specifically because it is a catch-all directory
+# where system package managers can place sudoers file rules during package installation.
+CUSTOM_INCLUDEDIR_PATH="/etc/sudoers.npp"
+
+# Check for sudo and visudo
+check_sudo_and_visudo() {
+  for cmd in sudo visudo; do
+    command -v "${cmd}" > /dev/null 2>&1 || return 1
+  done
+
+  # Check if /etc/sudoers exists and not empty
+  if [[ ! -s "${SUDOERS_FILE}" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+# Function to check/add for @includedir or #includedir (sudo v1.9.1 and older)
+# to main sudoers file if not exists.
+# We don't want to add entry to main sudoers file directly for safety.
+find_create_includedir() {
+  if check_sudo_and_visudo; then
+    includedir_path=""
+
+    # Check for @includedir or #includedir in the sudoers file
+    while IFS= read -r line; do
+      if [[ "${line}" =~ ^[@#]includedir[[:space:]]+([^#]*) ]]; then
+        includedir_path="${BASH_REMATCH[1]}"
+        break
+      fi
+    done < "${SUDOERS_FILE}"
+
+    # Did we find any @includedir or #includedir?
+    if [[ -n "${includedir_path}" ]]; then
+      # Trim leading and trailing whitespace
+      includedir_path="${includedir_path#"${includedir_path%%[![:space:]]*}"}"
+      includedir_path="${includedir_path%"${includedir_path##*[![:space:]]}"}"
+
+      # Remove trailing slash if it exists
+      includedir_path="${includedir_path%/}"
+
+      # Check if the includedir is a directory if not create it
+      if ! [[ -d "${includedir_path}" ]]; then
+        mkdir -p "${includedir_path}" || { echo -e "\e[91mFailed to create includedir path\e[0m"; return 1; }
+      fi
+    else
+      # We need to add @includedir or #includedir to main sudoers file
+      # --> Workflow <--
+      # Create sudoers backup/tmp files
+      # Modify sudoers tmp file according to sudo version
+      # Create includedir path before test tmp via visudo
+      # Test tmp before replacement with original
+      # Replace original with tmp
+      # Test original before remove backup, if we get error return from backup
+      # Clean up tmp/backup
+      # Assign custom_includedir to includedir
+
+      # Create sudoers backup/tmp files
+      cp "${SUDOERS_FILE}" "${TEMP_FILE}" || { echo -e "\e[91mFailed to create sudoers tmp file\e[0m"; return 1; }
+      cp "${SUDOERS_FILE}" "${BACKUP_FILE}" || { echo -e "\e[91mFailed to create sudoers backup file\e[0m"; return 1; }
+
+      # Modify sudoers tmp file
+      # Get the version of sudo that we need to find
+      # accepted includedir syntax @ or # according to sudo version.
+      SUDO_VERSION="$(sudo -V | grep 'Sudo version' | awk '{print $3}')"
+      VERSION_MAJOR="$(echo "$SUDO_VERSION" | cut -d. -f1)"
+      VERSION_MINOR="$(echo "$SUDO_VERSION" | cut -d. -f2)"
+	  
+      # Check if SUDO_VERSION, VERSION_MAJOR, and VERSION_MINOR were successfully retrieved
+      if [[ -z "$SUDO_VERSION" || -z "$VERSION_MAJOR" || -z "$VERSION_MINOR" ]]; then
+        echo -e "\e[91mCannot find sudo version\e[0m"
+        return 1
+      fi
+
+      # Compare the version with reference 1.9.1 (https://www.sudo.ws/docs/man/sudoers.man/#Including_other_files_from_within_sudoers)
+      if [[ "${VERSION_MAJOR}" -gt 1 || ( "${VERSION_MAJOR}" -eq 1 && "${VERSION_MINOR}" -ge 9 ) ]]; then
+        echo "@includedir ${CUSTOM_INCLUDEDIR_PATH}" | sudo EDITOR='tee -a' visudo -f "${TEMP_FILE}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to add includedir to sudoers file\e[0m"; return 1; }
+      else
+        echo "#includedir ${CUSTOM_INCLUDEDIR_PATH}" | sudo EDITOR='tee -a' visudo -f "${TEMP_FILE}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to add includedir to sudoers file\e[0m"; return 1; }
+      fi
+
+      # Create includedir path before test tmp via visudo
+      mkdir -p "${CUSTOM_INCLUDEDIR_PATH}" || { echo -e "\e[91mFailed to create /etc/sudoers.npp\e[0m"; return 1; }
+
+      # Test tmp before replacement with original
+      if visudo -c -f "${TEMP_FILE}" > /dev/null 2>&1; then
+        # Replace original with tmp
+        cp "${TEMP_FILE}" "${SUDOERS_FILE}" || { echo -e "\e[91mFailed to update sudoers file\e[0m"; return 1; }
+      fi
+
+      # Test original before remove backup, if we get error return from backup
+      if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
+        cp "${BACKUP_FILE}" "${SUDOERS_FILE}" || { echo -e "\e[91mFailed to return from sudoers backup file\e[0m"; return 1; }
+        return 1
+      fi
+
+      # Clean up tmp/backup
+      rm -f "${TEMP_FILE:?}"
+      rm -f "${BACKUP_FILE:?}"
+
+      # Assign custom_includedir to includedir
+      includedir_path="${CUSTOM_INCLUDEDIR_PATH}"
+    fi
+  else
+    echo -e "\033[1;33mWarning:\033[1;36m '\033[1;35msudo\033[1;36m', '\033[1;35mvisudo\033[1;36m' need to be installed, and '\033[1;35m${SUDOERS_FILE}\033[1;36m' must exist to manage systemd service from WordPress admin dashboard directly. Skipped integration..\033[0m"
+    return 1
+  fi
+  return 0
+}
+
+grant_sudo_perm_systemctl_for_php_process_owner() {
+  # Try to get/create the includedir first
+  if find_create_includedir; then
+    # Check if we have already implemented sudo privileges
+    if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
+      SYSTEMCTL_PATH=$(type -P systemctl)
+      for user in "${!fcgi[@]}"; do
+        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start ${service_file_new##*/}, ${SYSTEMCTL_PATH} stop ${service_file_new##*/}, ${SYSTEMCTL_PATH} status ${service_file_new##*/}"
+        echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM user: ${user}\e[0m"; return 1; }
+      done
+    fi
+  else
+    return 1
+  fi
+
+  # Check the integrity, checking main sudoers file is enough
+  if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
+    # Revert back changes
+    rm "${includedir_path:?}/${NPP_SUDOERS:?}"
+    return 1
+  fi
+}
 
 # Restart setup
 restart_auto_setup() {
@@ -125,10 +268,64 @@ restart_auto_setup() {
   [[ -n "${setup_flag}" ]] && rm -f "${setup_flag}" > /dev/null 2>&1
   [[ -n "${setup_flag_nginx}" ]] && rm -f "${setup_flag_nginx}" > /dev/null 2>&1
 
+  # Revert NPP sudoers configs
+  if check_sudo_and_visudo; then
+    # Check for @includedir or #includedir in the sudoers file
+    while IFS= read -r line; do
+      if [[ "${line}" =~ ^[@#]includedir[[:space:]]+([^#]*) ]]; then
+        includedir_path="${BASH_REMATCH[1]}"
+        break
+      fi
+    done < "${SUDOERS_FILE}"
+
+    # Did we find any @includedir or #includedir ?
+    if [[ -n "${includedir_path}" ]]; then
+      # Trim leading and trailing whitespace
+      includedir_path="${includedir_path#"${includedir_path%%[![:space:]]*}"}"
+      includedir_path="${includedir_path%"${includedir_path##*[![:space:]]}"}"
+
+      # Remove trailing slash if it exists
+      includedir_path="${includedir_path%/}"
+    fi
+
+    if [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
+      rm -f "${includedir_path:?}/${NPP_SUDOERS:?}"
+    fi
+
+    # Remove custom includedir in main sudoers file if we put before
+    # Check if includedir_path matches CUSTOM_INCLUDEDIR_PATH
+    if [[ "${includedir_path}" == "${CUSTOM_INCLUDEDIR_PATH}" ]]; then
+      # Create sudoers backup/tmp files
+      cp "${SUDOERS_FILE}" "${TEMP_FILE}"
+      cp "${SUDOERS_FILE}" "${BACKUP_FILE}"
+
+      # Use sed to remove the exact @includedir and #includedir lines from the sudoers file
+      sed -i "\|^@includedir ${CUSTOM_INCLUDEDIR_PATH}$|d" "${TEMP_FILE}" > /dev/null 2>&1
+      sed -i "\|^#includedir ${CUSTOM_INCLUDEDIR_PATH}$|d" "${TEMP_FILE}" > /dev/null 2>&1
+
+      # Test tmp before replacement with original
+      if visudo -c -f "${TEMP_FILE}" > /dev/null 2>&1; then
+        # Replace original with tmp
+        cp "${TEMP_FILE}" "${SUDOERS_FILE}"
+      fi
+
+      # Test original before remove backup, if we get error return from backup
+      if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
+        cp "${BACKUP_FILE}" "${SUDOERS_FILE}"
+      else
+        # Clean up tmp/backup
+        rm -f "${TEMP_FILE:?}"
+        rm -f "${BACKUP_FILE:?}"
+        # Remove custom includedir
+        rmdir "${CUSTOM_INCLUDEDIR_PATH:?}" > /dev/null 2>&1	
+      fi
+    fi
+  fi
+
   # Stop and remove systemd service
   if [[ -f "${service_file_new}" ]]; then
-    systemctl stop npp-wordpress.service > /dev/null 2>&1
-    systemctl disable npp-wordpress.service > /dev/null 2>&1
+    systemctl stop "${service_file_new##*/}" > /dev/null 2>&1
+    systemctl disable "${service_file_new##*/}" > /dev/null 2>&1
     rm -f "${service_file_new}"
     systemctl daemon-reload > /dev/null 2>&1
   fi
@@ -170,9 +367,9 @@ if [[ -t 0 ]]; then
       restart_auto_setup
     elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified nginx.conf)
-      systemctl restart npp-wordpress.service > /dev/null 2>&1
+      systemctl restart "${service_file_new##*/}" > /dev/null 2>&1
       # Check if the service restarted successfully
-      if systemctl is-active --quiet npp-wordpress.service; then
+      if systemctl is-active --quiet "${service_file_new##*/}"; then
         echo ""
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         print_nginx_cache_paths
@@ -188,9 +385,9 @@ if [[ -t 0 ]]; then
       restart_auto_setup manual
     elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified manual-configs.nginx)
-      systemctl restart npp-wordpress.service > /dev/null 2>&1
+      systemctl restart "${service_file_new##*/}" > /dev/null 2>&1
       # Check if the service restarted successfully
-      if systemctl is-active --quiet npp-wordpress.service; then
+      if systemctl is-active --quiet "${service_file_new##*/}"; then
         echo ""
         echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
         print_nginx_cache_paths
@@ -354,12 +551,10 @@ fi
 
 # Systemd operations
 check_and_start_systemd_service() {
-  # Check if the service file exists
-  service_file="/etc/systemd/system/npp-wordpress.service"
-
-  if [[ ! -f "$service_file" ]]; then
+  # Check if the service file exists, if not create it
+  if [[ ! -f "${service_file_new}" ]]; then
 	# Generate systemd service file
-	cat <<- NGINX_ > "$service_file"
+	cat <<- NGINX_ > "${service_file_new}"
 	[Unit]
 	Description=NPP Wordpress Plugin Cache Operations Service
 	After=network.target nginx.service local-fs.target
@@ -393,23 +588,23 @@ check_and_start_systemd_service() {
     }
 
     # Enable and start the service
-    systemctl enable --now npp-wordpress.service > /dev/null 2>&1 || {
+    systemctl enable --now "${service_file_new##*/}" > /dev/null 2>&1 || {
       echo -e "\e[91mError:\e[0m Failed to enable and start systemd service."
       exit 1
     }
 
     # Check if the service started successfully
-    if systemctl is-active --quiet npp-wordpress.service; then
+    if systemctl is-active --quiet "${service_file_new##*/}"; then
       echo ""
       echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is started."
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
   else
-    if systemctl is-active --quiet npp-wordpress.service; then
-      systemctl stop npp-wordpress.service > /dev/null 2>&1
+    if systemctl is-active --quiet "${service_file_new##*/}"; then
+      systemctl stop "${service_file_new##*/}" > /dev/null 2>&1
     fi
-    systemctl start npp-wordpress.service > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
+    systemctl start "${service_file_new##*/}" > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
   fi
 }
 
@@ -470,10 +665,17 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     fcgi["$user"]="$cache_path"
   done < "${this_script_path}/manual-configs.nginx"
 
-  # Check setup already completed or not
+  # Check manual setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
     print_nginx_cache_paths
+    if grant_sudo_perm_systemctl_for_php_process_owner; then
+      echo ""
+      echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
+      for user in "${!fcgi[@]}"; do
+        echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+      done
+    fi
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
@@ -490,7 +692,7 @@ else
     exit 1
   fi
 
-  # check setup already completed or not
+  # check auto setup already completed or not
   if ! [[ -f "${this_script_path}/auto_setup_on" ]]; then
     green=$(tput setaf 2)
     magenta=$(tput setaf 5)
@@ -521,6 +723,13 @@ else
     if [[ $confirm =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
       print_nginx_cache_paths
+      if grant_sudo_perm_systemctl_for_php_process_owner; then
+        echo ""
+        echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
+        for user in "${!fcgi[@]}"; do
+          echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+        done
+      fi
     else
       manual_setup
     fi
@@ -604,7 +813,7 @@ inotify-start() {
   # Check if inotifywait processes are alive
   for path in "${!fcgi[@]}"; do
     if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "All done! Started to listen to Nginx FastCGI Cache Path: (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER: (${path}) ."
+      echo "All done! Started to listen to Nginx FastCGI Cache Path: (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER: (${path})"
     else
       echo "Unknown error occurred during cache listen event."
     fi
