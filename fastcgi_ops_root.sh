@@ -17,21 +17,34 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # SCRIPT DESCRIPTION:
-#####################
-# This script is written for "FastCGI Cache Purge and Preload for Nginx" Wordpress Plugin.
+# -------------------
+# This script is written for "FastCGI Cache Purge and Preload for Nginx"
+# Wordpress Plugin.
 # URL: https://wordpress.org/plugins/fastcgi-cache-purge-and-preload-nginx/
-# This script attempts to automatically match and grant (via setfacl) permissions for PHP-FPM-USER (as known, process owner or website-user) along with their associated Nginx Cache Paths.
-# If it cannot automatically match the PHP-FPM-USER along with their associated Nginx Cache Path, it offers an easy manual setup option with the 'manual-configs.nginx' file.
-# Mainly, in case your current web server setup involves two distinct users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER,
-# the solution proposed by this script involves combining Linux server side tools 'inotifywait' with 'setfacl' to automatically grant write permissions to the PHP-FPM-USER
-# for the corresponding Nginx Cache Paths (listening cache events), which are matched either automatically or via a manual configuration file.
-# This approach is an alternative to external Nginx modules like Cache Purge module for purge operations.
-# This script create npp-wordpress sytemd service to manage grant permission for purge and preload actions.
+# This script attempts to automatically match and grant (via setfacl) 
+# permissions for PHP-FPM-USER (as known, process owner or website-user) 
+# along with their associated Nginx Cache Paths.
+# If it cannot automatically match the PHP-FPM-USER along with their 
+# associated Nginx Cache Path, it offers an easy manual setup option 
+# with the 'manual-configs.nginx' file.
+# Mainly, in case your current web server setup involves two distinct 
+# users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER, the solution 
+# proposed by this script involves combining Linux server side tools 
+# 'inotifywait' with 'setfacl' to automatically grant write permissions 
+# to the PHP-FPM-USER for the corresponding Nginx Cache Paths (listening 
+# cache events), which are matched either automatically or via a manual 
+# configuration file.
+# This approach is an alternative to external Nginx modules like Cache 
+# Purge module for purge operations.
+# This script creates an npp-wordpress systemd service to manage grant 
+# permission for purge and preload actions.
 
-# After completing the setup (whether automatic or manual), you can manage the automatically created
-# 'npp-wordpress' systemd service on the WP admin dashboard NPP plugin settings page.
-# This allows you to start and stop inotifywait/setfacl operations (via systemd) for Nginx Cache Path directly
-# from the front-end for associated PHP-FPM-USER
+# After completing the setup (whether automatic or manual), you can manage 
+# the automatically created 'npp-wordpress' systemd service on the WP admin 
+# dashboard NPP plugin settings page.
+# This allows you to start and stop inotifywait/setfacl operations (via 
+# systemd) for Nginx Cache Path directly from the front-end for associated 
+# PHP-FPM-USER.
 
 # Manual setup instructions
 manual_setup() {
@@ -237,13 +250,22 @@ find_create_includedir() {
   return 0
 }
 
-# Automate the process of granting specific sudo permissions to the PHP-FPM process owners on a system.
-# These permissions specifically authorize PHP-FPM process owners to execute systemctl commands (start, stop, status) for NPP plugin main systemd service 'npp-wordpress'.
-# By granting these permissions, the goal is to allow the 'npp-wordpress' systemd service to be controlled directly from the WordPress admin dashboard, enhancing operational flexibility and automation.
-# This automation enhances security by limiting sudo access to only specific systemd service management tasks.
-# After successful integration NPP users will be able to manage (start, stop, status) the 'npp-wordpress' systemd service on WP admin dashboard NPP plugin settings page.
-# This implementation not restrictly necessarry for functional cache purge & preload actions and not breaks default setup process,
-# but it is nice to have this ability that control main plugin systemd service 'npp-wordpress' on WP admin dashboard.
+# Automate the process of granting specific sudo permissions to the PHP-FPM 
+# process owners on a system. These permissions specifically authorize 
+# PHP-FPM process owners to execute systemctl commands (start, stop, status) 
+# for NPP plugin main systemd service 'npp-wordpress'.
+# By granting these permissions, the goal is to allow the 'npp-wordpress' 
+# systemd service to be controlled directly from the WordPress admin 
+# dashboard, enhancing operational flexibility and automation.
+# This automation enhances security by limiting sudo access to only 
+# specific systemd service management tasks.
+# After successful integration, NPP users will be able to manage (start, 
+# stop, status) the 'npp-wordpress' systemd service on WP admin dashboard 
+# NPP plugin settings page.
+# This implementation is not strictly necessary for functional cache 
+# purge & preload actions and does not break the default setup process, 
+# but it is nice to have this ability to control the main plugin systemd 
+# service 'npp-wordpress' on WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
   if find_create_includedir; then
