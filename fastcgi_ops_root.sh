@@ -187,23 +187,23 @@ find_create_includedir() {
       fi
     else
       # We need to add @includedir or #includedir to main sudoers file
+      
       # --> Workflow <--
-      # Create sudoers backup/tmp files
-      # Modify sudoers tmp file according to sudo version
-      # Create includedir path before test tmp via visudo
-      # Test tmp before replacement with original
-      # Replace original with tmp
-      # Test original before remove backup, if we get error return from backup
-      # Clean up tmp/backup
-      # Assign custom_includedir to includedir
+      # 1. Create sudoers backup/tmp files
+      # 2. Modify sudoers tmp file according to sudo version
+      # 3. Create includedir path before testing tmp file via visudo
+      # 4. Test tmp file before replacing the original sudoers file
+      # 5. Replace the original sudoers file with the tmp file
+      # 6. Test the updated sudoers file and restore from backup if there is an error
+      # 7. Clean up tmp and backup files
+      # 8. Assign custom_includedir to includedir
 
-      # Create sudoers backup/tmp files
+      # 1. Create sudoers backup/tmp files
       cp "${SUDOERS_FILE}" "${TEMP_FILE}" || { echo -e "\e[91mFailed to create sudoers tmp file\e[0m"; return 1; }
       cp "${SUDOERS_FILE}" "${BACKUP_FILE}" || { echo -e "\e[91mFailed to create sudoers backup file\e[0m"; return 1; }
 
-      # Modify sudoers tmp file
-      # Get the version of sudo that we need to find
-      # accepted includedir syntax @ or # according to sudo version.
+      # 2. Modify sudoers tmp file according to sudo version
+      # Get the version of sudo to determine the correct includedir syntax (@ or #)
       SUDO_VERSION="$(sudo -V | grep 'Sudo version' | awk '{print $3}')"
       VERSION_MAJOR="$(echo "$SUDO_VERSION" | cut -d. -f1)"
       VERSION_MINOR="$(echo "$SUDO_VERSION" | cut -d. -f2)"
@@ -221,26 +221,26 @@ find_create_includedir() {
         echo "#includedir ${CUSTOM_INCLUDEDIR_PATH}" | sudo EDITOR='tee -a' visudo -f "${TEMP_FILE}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to add includedir to sudoers file\e[0m"; return 1; }
       fi
 
-      # Create includedir path before test tmp via visudo
+      # 3. Create includedir path before testing tmp file via visudo
       mkdir -p "${CUSTOM_INCLUDEDIR_PATH}" || { echo -e "\e[91mFailed to create /etc/sudoers.npp\e[0m"; return 1; }
 
-      # Test tmp before replacement with original
+      # 4. Test tmp file before replacing the original sudoers file
       if visudo -c -f "${TEMP_FILE}" > /dev/null 2>&1; then
-        # Replace original with tmp
+        # 5. Replace the original sudoers file with the tmp file
         cp "${TEMP_FILE}" "${SUDOERS_FILE}" || { echo -e "\e[91mFailed to update sudoers file\e[0m"; return 1; }
       fi
 
-      # Test original before remove backup, if we get error return from backup
+      # 6. Test the updated sudoers file and restore from backup if there is an error
       if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
         cp "${BACKUP_FILE}" "${SUDOERS_FILE}" || { echo -e "\e[91mFailed to return from sudoers backup file\e[0m"; return 1; }
         return 1
       fi
 
-      # Clean up tmp/backup
+      # 7. Clean up tmp and backup files
       rm -f "${TEMP_FILE:?}"
       rm -f "${BACKUP_FILE:?}"
 
-      # Assign custom_includedir to includedir
+      # 8. Assign custom_includedir_path to includedir_path
       includedir_path="${CUSTOM_INCLUDEDIR_PATH}"
     fi
   else
