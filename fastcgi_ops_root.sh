@@ -61,7 +61,7 @@ manual_setup() {
 # Handle ctrl+c
 trap manual_setup SIGINT
 
-# Get help before and interrupt
+# Get help before any interrupt
 help() {
   if command -v tput > /dev/null 2>&1; then
     cyan=$(tput setaf 6)
@@ -78,7 +78,7 @@ help() {
 
 # Check if script is executed as root
 if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root"
+    echo -e "\e[91mThis script must be run as root\e[0m"
     exit 1
 fi
 
@@ -97,8 +97,8 @@ required_commands=(
 
 # Check if required commands are available
 for cmd in "${required_commands[@]}"; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Error: $cmd is not installed or not found in PATH."
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo -e "\e[91mError:\e[0m \e[93m$cmd\e[0m \e[96mis not installed or not found in PATH.\e[0m"
     exit 1
   fi
 done
@@ -106,7 +106,7 @@ done
 # Check ACL configured properly
 fs="$(df / | awk 'NR==2 {print $1}')"
 if ! tune2fs -l "${fs}" | grep -q "Default mount options:.*acl"; then
-  echo "Filesystem not mounted with the acl!"
+  echo -e '\e[91mError:\e[0m \e[96mFilesystem not mounted with the acl!\e[0m'
   exit 1
 fi
 
@@ -117,7 +117,7 @@ this_script_name=$(basename "${this_script_full_path}")
 
 # Ensure script path is resolved
 if [[ -z "${this_script_path}" ]]; then
-  echo "ERROR: Cannot find script path!"
+  echo -e '\e[91mERROR:\e[0m \e[96mCannot find script path!\e[0m'
   exit 1
 fi
 
@@ -210,7 +210,7 @@ find_create_includedir() {
 	  
       # Check if SUDO_VERSION, VERSION_MAJOR, and VERSION_MINOR were successfully retrieved
       if [[ -z "$SUDO_VERSION" || -z "$VERSION_MAJOR" || -z "$VERSION_MINOR" ]]; then
-        echo -e "\e[91mCannot find sudo version\e[0m"
+        echo -e "\e[91mCannot find sudo major & minor versions\e[0m"
         return 1
       fi
 
@@ -647,7 +647,7 @@ check_and_start_systemd_service() {
 # Check if manual configuration file exists
 if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   if [[ ! -s "${this_script_path}/manual-configs.nginx" ]]; then
-    echo -e "\e[91mError:\e[0m The manual configuration file 'manual-configs.nginx' is empty. Please provide configuration details and try again."
+    echo -e "\e[91mError:\e[0m \e[96mThe manual configuration file '\e[93mmanual-configs.nginx\e[96m' is empty. Please provide configuration details and try again.\e[0m"
     exit 1
   fi
 
@@ -661,20 +661,20 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Check if the line is empty after trimming whitespace
     if [[ -z "$line" ]]; then
-      continue  # Skip empty lines
+      continue
     fi
 
     # Validate the format of the line (expects "user cache_path")
     if [[ "$(echo "$line" | awk '{print NF}')" -ne 2 ]]; then
-      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-configs.nginx'. Each line must contain only two fields: 'PHP_FPM_USER NGINX_CACHE_PATH'"
-      echo "Invalid line: $line"
+      echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must contain only two fields: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
+      echo -e "\e[91mInvalid line: \e[96m$line\e[0m"
       exit 1
     fi
 
     # Validate the format of the line (expects "PHP_FPM_USER NGINX_CACHE_PATH")
     if [[ ! "$line" =~ ^[[:alnum:]_-]+\ [[:print:]]+$ ]]; then
-      echo -e "\e[91mError:\e[0m Invalid format in the manual configuration file 'manual-configs.nginx'. Each line must be in the format 'PHP_FPM_USER NGINX_CACHE_PATH'"
-      echo "Invalid line: $line"
+      echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must be in the format: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
+      echo -e "\e[91mInvalid line: \e[96m$line\e[0m"
       exit 1
     fi
 
@@ -730,24 +730,21 @@ else
 
   # check auto setup already completed or not
   if ! [[ -f "${this_script_path}/auto_setup_on" ]]; then
-    green=$(tput setaf 2)
-    magenta=$(tput setaf 5)
-    reset=$(tput sgr0)
-    # remove duplicates from array
+    # Remove duplicates from array
     ACTIVE_PHP_FPM_USERS=($(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}" | sort -u))
     # Convert PHP_FPM_USERS string to an array
     IFS=$'\n' read -r -d '' -a PHP_FPM_USERS <<< "${PHP_FPM_USERS}"
 
     echo ""
-    echo -e "${green}AUTO DETECTION STARTED${reset}"
+    echo -e "\e[32mAUTO DETECTION STARTED\e[0m"
     echo -e "\e[96mNOTE: You can always continue with the manual setup via (\e[95mN/n\e[96m) if the auto detection does not work for you.\e[0m"
     echo ""
-    echo -e "${green}All PHP-FPM Users:${reset}"
-    echo -e "${magenta}${PHP_FPM_USERS[@]:-"None"}${reset}"
-    echo -e "${green}Dynamic PHP-FPM Users:${reset}"
-    echo -e "${magenta}${ACTIVE_PHP_FPM_USERS[@]:-"None"}${reset}"
-    echo -e "${green}Ondemand PHP-FPM Users:${reset}"
-    echo -e "${magenta}$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))${reset}"
+    echo -e "\e[32mFound PHP-FPM-USERS:\e[0m"
+    echo -e "\e[35m${PHP_FPM_USERS[@]:-"None"}\e[0m"
+    echo -e "\e[32mActive PHP-FPM-USERS:\e[0m"
+    echo -e "\e[35m${ACTIVE_PHP_FPM_USERS[@]:-"None"}\e[0m"
+    echo -e "\e[32mOndemand PHP-FPM-USERS:\e[0m"
+    echo -e "\e[35m$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))\e[0m"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
     echo ""
@@ -784,7 +781,7 @@ inotify-start() {
     # if only one instance exists and it is broken, exit
     for path in "${!fcgi[@]}"; do
       if ! [[ -d "${fcgi[$path]}" ]]; then
-        echo "Your FastCGI cache directory (${fcgi[$path]}) not found, if path is correct please restart nginx.service to automatically create it"
+        echo -e "\e[91mError:\e[0m \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) not found, if path is correct please restart \e[93mnginx.service\e[96m to automatically create it\e[0m"
         exit 1
       fi
     done
@@ -792,7 +789,7 @@ inotify-start() {
     # In many instances If only one instance is broken, exclude and continue
     for path in "${!fcgi[@]}"; do
       if ! [[ -d "${fcgi[$path]}" ]]; then
-        echo "Your FastCGI cache directory (${fcgi[$path]}) not found, if path is correct please restart nginx.service to automatically create it, EXCLUDED"
+        echo -e "\e[93mWarning:\e[0m \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) not found, if path is correct please restart \e[93mnginx.service\e[96m to automatically create it, EXCLUDED\e[0m"
         unset "fcgi[$path]"
       fi
     done
@@ -801,7 +798,7 @@ inotify-start() {
   # Prevent starting multiple instances for same path
   for path in "${!fcgi[@]}"; do
     if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "Your FastCGI cache directory (${fcgi[$path]})is already listening, EXCLUDED"
+      echo -e "\e[93mWarning: \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) is already listening, EXCLUDED\e[0m"
       unset "fcgi[$path]"
     fi
   done
