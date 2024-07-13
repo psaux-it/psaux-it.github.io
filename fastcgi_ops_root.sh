@@ -382,7 +382,7 @@ restart_auto_setup() {
 print_nginx_cache_paths() {
   # Add a short delay to ensure all log entries are captured
   sleep 2
-  journalctl -n 3 -u npp-wordpress --no-pager \
+  journalctl -n 3 -u "${service_file_new##*/}" --no-pager \
     | grep -E '(Started NPP|All done!)' \
     | sed -E 's/.*?(Started NPP|All done!) /\1/' \
     | awk '{
