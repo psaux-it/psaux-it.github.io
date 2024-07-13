@@ -46,6 +46,15 @@
 # systemd) for Nginx Cache Path directly from the front-end for associated 
 # PHP-FPM-USER.
 
+# NOTE
+# ---------
+# Furthermore, if you're hosting multiple WordPress sites each with their own
+# Nginx cache paths and associated PHP-FPM users on the same host, you'll find
+# that deploying just one instance of this script effectively manages all
+# WordPress instances using the NPP plugin. This streamlined approach centralizes
+# cache management tasks, ensuring optimal efficiency and simplified maintenance
+# throughout your server environment.
+
 # Manual setup instructions
 manual_setup() {
   echo -e "\n\e[91mCanceled:\e[0m Automated Setup has been canceled by the user. Proceeding to manual setup."
@@ -117,7 +126,7 @@ this_script_name=$(basename "${this_script_full_path}")
 
 # Ensure script path is resolved
 if [[ -z "${this_script_path}" ]]; then
-  echo -e '\e[91mERROR:\e[0m \e[96mCannot find script path!\e[0m'
+  echo -e '\e[91mError:\e[0m \e[96mCannot find script path!\e[0m'
   exit 1
 fi
 
