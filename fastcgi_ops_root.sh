@@ -362,7 +362,7 @@ restart_auto_setup() {
         rm -f "${TEMP_FILE:?}"
         rm -f "${BACKUP_FILE:?}"
         # Remove custom includedir
-        rmdir "${CUSTOM_INCLUDEDIR_PATH:?}" > /dev/null 2>&1	
+        rmdir "${CUSTOM_INCLUDEDIR_PATH:?}" > /dev/null 2>&1
       fi
     fi
   fi
@@ -539,9 +539,9 @@ validate_cache_paths() {
       echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
     fi
 
+    echo ""
     for invalid in "${invalid_paths[@]}"; do
-      echo ""
-      echo -e "\033[0;31m${invalid}\033[0m"
+      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
     done
     return 1
   fi
@@ -696,15 +696,15 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
       exit 1
     fi
 
-    # Check if the directory exists
-    if [[ ! -d "${cache_path}" ]]; then
-      echo -e "\e[33mWarning: Cache path ${cache_path} for user ${user} does not exist. This vhost will be excluded if other vhosts are successful.\e[0m"
-    fi
-
     # Check if the user exists
     if ! id "${user}" &>/dev/null; then
       echo -e "\e[91mError:\e[0m User: ${user} specified in the manual configuration file does not exist. Please ensure the user exists and try again."
       exit 1
+    fi
+
+    # Check if the directory exists
+    if [[ ! -d "${cache_path}" ]]; then
+      echo -e "\e[33mWarning: Cache path ${cache_path} for user ${user} does not exist. This website will be excluded.\e[0m"
     fi
 
     fcgi["${user}"]="${cache_path}"
@@ -717,7 +717,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     if grant_sudo_perm_systemctl_for_php_process_owner; then
       echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
       for user in "${!fcgi[@]}"; do
-        echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+        echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
       done
     fi
     echo ""
@@ -759,7 +759,7 @@ else
     echo ""
     echo -e "\e[96mAuto detected Nginx cache paths and associated PHP-FPM users:\e[0m"
     for user in "${!fcgi[@]}"; do
-      echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
+      echo -e "Website User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
     read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. \e[92m[Y/n]: \e[0m' confirm
     if [[ ${confirm} =~ ^[Yy]$ ]]; then
@@ -768,7 +768,7 @@ else
       if grant_sudo_perm_systemctl_for_php_process_owner; then
         echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
         for user in "${!fcgi[@]}"; do
-          echo -e "User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+          echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
         done
       fi
       echo ""
