@@ -73,8 +73,8 @@ trap manual_setup SIGINT
 # Get help before any interrupt
 help() {
   if command -v tput > /dev/null 2>&1; then
-    cyan=$(tput setaf 6)
-    reset=$(tput sgr0)
+    cyan=(tput setaf 6)
+    reset=(tput sgr0)
     m_tab='  '
   fi
 
@@ -107,7 +107,7 @@ required_commands=(
 # Check if required commands are available
 for cmd in "${required_commands[@]}"; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo -e "\e[91mError:\e[0m \e[93m$cmd\e[0m \e[96mis not installed or not found in PATH.\e[0m"
+    echo -e "\e[91mError:\e[0m \e[93m${cmd}\e[0m \e[96mis not installed or not found in PATH.\e[0m"
     exit 1
   fi
 done
@@ -214,11 +214,11 @@ find_create_includedir() {
       # 2. Modify sudoers tmp file according to sudo version
       # Get the version of sudo to determine the correct includedir syntax (@ or #)
       SUDO_VERSION="$(sudo -V | grep 'Sudo version' | awk '{print $3}')"
-      VERSION_MAJOR="$(echo "$SUDO_VERSION" | cut -d. -f1)"
-      VERSION_MINOR="$(echo "$SUDO_VERSION" | cut -d. -f2)"
+      VERSION_MAJOR="$(echo "${SUDO_VERSION}" | cut -d. -f1)"
+      VERSION_MINOR="$(echo "${SUDO_VERSION}" | cut -d. -f2)"
 	  
       # Check if SUDO_VERSION, VERSION_MAJOR, and VERSION_MINOR were successfully retrieved
-      if [[ -z "$SUDO_VERSION" || -z "$VERSION_MAJOR" || -z "$VERSION_MINOR" ]]; then
+      if [[ -z "${SUDO_VERSION}" || -z "${VERSION_MAJOR}" || -z "${VERSION_MINOR}" ]]; then
         echo -e "\e[91mCannot find sudo major & minor versions\e[0m"
         return 1
       fi
@@ -407,10 +407,10 @@ print_nginx_cache_paths() {
 if [[ -t 0 ]]; then
   if [[ -f "${this_script_path}/auto_setup_on" ]]; then
     # User prompt for fresh restart auto setup
-    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[93mnginx.conf\e[0m \e[96mchanges, select [A/a] \e[92m[R/A]: \e[0m' restart_confirm
-    if [[ $restart_confirm =~ ^[Rr]$ ]]; then
+    read -rp $'\e[96mAuto setup has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[93mnginx.conf\e[0m \e[96mchanges, select [A/a] \e[92m[R/A/q]: \e[0m' restart_confirm
+    if [[ "${restart_confirm}" =~ ^[Rr]$ ]]; then
       restart_auto_setup
-    elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
+    elif [[ "${restart_confirm}" =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified nginx.conf)
       systemctl restart "${service_file_new##*/}" > /dev/null 2>&1
       # Check if the service restarted successfully
@@ -425,10 +425,10 @@ if [[ -t 0 ]]; then
       exit 0
     fi
   elif [[ -f "${this_script_path}/manual_setup_on" ]]; then
-    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[35mmanual-configs.nginx\e[0m \e[96mchanges, select [A/a] \e[92m[R/A]: \e[0m' restart_confirm
-    if [[ $restart_confirm =~ ^[Rr]$ ]]; then
+    read -rp $'\e[96mManual setup via \e[35m'"${this_script_path}"$'/manual-configs.nginx\e[96m has already been completed. If you want to restart the setup, select [R/r]. If you want to just apply \e[35mmanual-configs.nginx\e[0m \e[96mchanges, select [A/a] \e[92m[R/A/q]: \e[0m' restart_confirm
+    if [[ "${restart_confirm}" =~ ^[Rr]$ ]]; then
       restart_auto_setup manual
-    elif [[ $restart_confirm =~ ^[Aa]$ ]]; then
+    elif [[ "${restart_confirm}" =~ ^[Aa]$ ]]; then
       # Handle newly added Nginx Cache Paths to take affect immediately with service restart (modified manual-configs.nginx)
       systemctl restart "${service_file_new##*/}" > /dev/null 2>&1
       # Check if the service restarted successfully
@@ -444,7 +444,7 @@ if [[ -t 0 ]]; then
     fi
   elif [[ -f "${service_file_new}" || -f "${service_file_old}" ]]; then
     read -rp $'\e[96mIt appears that an instance of the setup has already been completed in a different directory. Do you want to remove old and restart the clean setup here? \e[92m[Y/n]: \e[0m' restart_confirm
-    if [[ $restart_confirm =~ ^[Yy]$ ]]; then
+    if [[ "${restart_confirm}" =~ ^[Yy]$ ]]; then
       restart_auto_setup
     else
       # Prevent multiple setup in different locations
@@ -460,12 +460,12 @@ detect_nginx_conf() {
     "/usr/local/nginx/conf/nginx.conf"
   )
   for path in "${DEFAULT_NGINX_CONF_PATHS[@]}"; do
-    if [[ -f "$path" ]]; then
-      NGINX_CONF="$path"
+    if [[ -f "${path}" ]]; then
+      NGINX_CONF="${path}"
       break
     fi
   done
-  if [[ -z "$NGINX_CONF" ]]; then
+  if [[ -z "${NGINX_CONF}" ]]; then
     echo ""
     echo -e "\e[31mError: Nginx configuration file (\e[33mnginx.conf\e[31m) not found in default paths.\e[0m"
     echo -e "\e[36mPlease create a symbolic link from your original \e[33mnginx.conf\e[36m to \e[33m/etc/nginx/nginx.conf\e[36m, or continue with manual setup.\e[0m"
@@ -487,15 +487,15 @@ detect_nginx_conf() {
 extract_fastcgi_cache_paths() {
   {
     # Extract paths from directly nginx.conf
-    grep -E "^\s*fastcgi_cache_path\s+" "$NGINX_CONF" | awk '{print $2}'
+    grep -E "^\s*fastcgi_cache_path\s+" "${NGINX_CONF}" | awk '{print $2}'
 
     # Also get included paths to nginx.conf and extract fastcgi cache paths
     while IFS= read -r include_line; do
-      include_path=$(echo "$include_line" | awk '{print $2}')
+      include_path=$(echo "${include_line}" | awk '{print $2}')
       # Check wildcard for multiple files
       if [[ "${include_path}" == *"*"* ]]; then
         # Remove wildcard, slash, get the exact path
-        target_dir=$(echo "$include_path" | sed 's/\*.*//' | sed 's/\/$//')
+        target_dir=$(echo "${include_path}" | sed 's/\*.*//' | sed 's/\/$//')
       else
         # This is a directly included single file
         grep -E "^\s*fastcgi_cache_path\s+" "${include_path}" | awk '{print $2}'
@@ -516,15 +516,15 @@ validate_cache_paths() {
 
   for path in "${path_list[@]}"; do
     # Check if path is just '/'
-    if [[ "$path" == "/" ]]; then
-      invalid_paths+=("$path")
+    if [[ "${path}" == "/" ]]; then
+      invalid_paths+=("${path}")
       continue
     fi
 
     # Check Nginx cache path is a critical directory or starts with any critical directory
     for critical in "${critical_dirs[@]}"; do
-      if [[ "$path" == "$critical" || "$path" == "$critical/"* ]]; then
-        invalid_paths+=("$path")
+      if [[ "${path}" == "${critical}" || "${path}" == "${critical}/"* ]]; then
+        invalid_paths+=("${path}")
         break
       fi
     done
@@ -541,7 +541,7 @@ validate_cache_paths() {
 
     for invalid in "${invalid_paths[@]}"; do
       echo ""
-      echo -e "\033[0;31m$invalid\033[0m"
+      echo -e "\033[0;31m${invalid}\033[0m"
     done
     return 1
   fi
@@ -559,7 +559,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
   # Validate the found Nginx FastCGI cache paths
-  if ! validate_cache_paths ${FASTCGI_CACHE_PATHS}; then
+  if ! validate_cache_paths "${FASTCGI_CACHE_PATHS}"; then
     exit 1
   fi
 
@@ -568,18 +568,18 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
   # Loop through active vhosts
   while IFS= read -r VHOST; do
-    ACTIVE_VHOSTS+=("$VHOST")
+    ACTIVE_VHOSTS+=("${VHOST}")
     # Extract PHP-FPM users from running processes, excluding root
     while read -r user; do
-      ACTIVE_PHP_FPM_USERS+=("$user")
-    done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*$VHOST" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-  done <<< "$ACTIVE_VHOSTS"
+      ACTIVE_PHP_FPM_USERS+=("${user}")
+    done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*${VHOST}" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
+  done <<< "${ACTIVE_VHOSTS}"
 
   # Check if the PHP-FPM user's name is present in the FastCGI cache path
-  for PHP_FPM_USER in $PHP_FPM_USERS; do
-    for FASTCGI_CACHE_PATH in $FASTCGI_CACHE_PATHS; do
-      if echo "$FASTCGI_CACHE_PATH" | grep -q "$PHP_FPM_USER"; then
-        fcgi["$PHP_FPM_USER"]="$FASTCGI_CACHE_PATH"
+  for PHP_FPM_USER in ${PHP_FPM_USERS}; do
+    for FASTCGI_CACHE_PATH in ${FASTCGI_CACHE_PATHS}; do
+      if echo "${FASTCGI_CACHE_PATH}" | grep -q "${PHP_FPM_USER}"; then
+        fcgi["${PHP_FPM_USER}"]="${FASTCGI_CACHE_PATH}"
         break
       fi
     done
@@ -587,8 +587,8 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
   # Check if the user exists
   for user in "${!fcgi[@]}"; do
-    if ! id "$user" &>/dev/null; then
-      echo -e "\e[91mError:\e[0m User: $user does not exist. Please ensure the user exists and try again."
+    if ! id "${user}" &>/dev/null; then
+      echo -e "\e[91mError:\e[0m User: ${user} does not exist. Please ensure the user exists and try again."
       exit 1
     fi
   done
@@ -666,48 +666,48 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Read manual configuration file
   while IFS= read -r line; do
     # Trim leading and trailing whitespace from the line
-    line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    line=$(echo "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
     # Check if the line is empty after trimming whitespace
-    if [[ -z "$line" ]]; then
+    if [[ -z "${line}" ]]; then
       continue
     fi
 
     # Validate the format of the line (expects "user cache_path")
-    if [[ "$(echo "$line" | awk '{print NF}')" -ne 2 ]]; then
+    if [[ "$(echo "${line}" | awk '{print NF}')" -ne 2 ]]; then
       echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must contain only two fields: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
-      echo -e "\e[91mInvalid line: \e[96m$line\e[0m"
+      echo -e "\e[91mInvalid line: \e[96m${line}\e[0m"
       exit 1
     fi
 
     # Validate the format of the line (expects "PHP_FPM_USER NGINX_CACHE_PATH")
-    if [[ ! "$line" =~ ^[[:alnum:]_-]+\ [[:print:]]+$ ]]; then
+    if [[ ! "${line}" =~ ^[[:alnum:]_-]+\ [[:print:]]+$ ]]; then
       echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must be in the format: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
-      echo -e "\e[91mInvalid line: \e[96m$line\e[0m"
+      echo -e "\e[91mInvalid line: \e[96m${line}\e[0m"
       exit 1
     fi
 
     # Extract PHP-FPM user and FastCGI cache path from each line
-    user=$(echo "$line" | awk '{print $1}')
-    cache_path=$(echo "$line" | awk '{print $2}')
+    user=$(echo "${line}" | awk '{print $1}')
+    cache_path=$(echo "${line}" | awk '{print $2}')
 
     # Validate the Nginx FastCGI cache path
-    if ! validate_cache_paths "$cache_path"; then
+    if ! validate_cache_paths "${cache_path}"; then
       exit 1
     fi
 
     # Check if the directory exists
-    if [[ ! -d "$cache_path" ]]; then
-      echo -e "\e[33mWarning: Cache path $cache_path for user $user does not exist. This vhost will be excluded if other vhosts are successful.\e[0m"
+    if [[ ! -d "${cache_path}" ]]; then
+      echo -e "\e[33mWarning: Cache path ${cache_path} for user ${user} does not exist. This vhost will be excluded if other vhosts are successful.\e[0m"
     fi
 
     # Check if the user exists
-    if ! id "$user" &>/dev/null; then
-      echo -e "\e[91mError:\e[0m User: $user specified in the manual configuration file does not exist. Please ensure the user exists and try again."
+    if ! id "${user}" &>/dev/null; then
+      echo -e "\e[91mError:\e[0m User: ${user} specified in the manual configuration file does not exist. Please ensure the user exists and try again."
       exit 1
     fi
 
-    fcgi["$user"]="$cache_path"
+    fcgi["${user}"]="${cache_path}"
   done < "${this_script_path}/manual-configs.nginx"
 
   # Check manual setup already completed or not
@@ -762,7 +762,7 @@ else
       echo -e "User: \e[92m$user\e[0m, Nginx Cache Path: \e[93m${fcgi[$user]}\e[0m"
     done
     read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. \e[92m[Y/n]: \e[0m' confirm
-    if [[ $confirm =~ ^[Yy]$ ]]; then
+    if [[ ${confirm} =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
       print_nginx_cache_paths
       if grant_sudo_perm_systemctl_for_php_process_owner; then
@@ -822,13 +822,10 @@ inotify-start() {
   done
 
   # Exit if all instances are excluded and already running
-  if [ "$all_excluded" = true ]; then
+  if [[ "${all_excluded}" = true ]]; then
     echo "All instances(paths) already listening, nothing to do"
     exit 0
   fi
-
-  # Exit if all instances are excluded and already running
-  #! (( "${#fcgi[@]}" )) && { echo "All instances(paths) already listening, nothing to do"; exit 0; }
 
   # start to listen fastcgi cache folder events
   # give write permission to website user for further purge ops
@@ -871,13 +868,13 @@ inotify-stop() {
     if (( "${#PIDS[@]}" )); then
       for pid in "${PIDS[@]}"; do
         if ps -p "${pid}" >/dev/null 2>&1; then
-          kill -9 $pid && echo "Cache preload process $pid for website $load is killed!"
+          kill -9 "${pid}" && echo "Cache preload process ${pid} for website ${load} is killed!"
         else
-          echo "No cache preload process found for website $load - last running process was $pid"
+          echo "No cache preload process found for website ${load} - last running process was ${pid}"
         fi
       done
     else
-      echo "No cache preload process found for website $load"
+      echo "No cache preload process found for website ${load}"
     fi
   done
 }
