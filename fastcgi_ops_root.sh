@@ -21,29 +21,29 @@
 # This script is written for "FastCGI Cache Purge and Preload for Nginx"
 # Wordpress Plugin.
 # URL: https://wordpress.org/plugins/fastcgi-cache-purge-and-preload-nginx/
-# This script attempts to automatically match and grant (via setfacl) 
-# permissions for PHP-FPM-USER (as known, process owner or website-user) 
+# This script attempts to automatically match and grant (via setfacl)
+# permissions for PHP-FPM-USER (as known, process owner or website-user)
 # along with their associated Nginx Cache Paths.
-# If it cannot automatically match the PHP-FPM-USER along with their 
-# associated Nginx Cache Path, it offers an easy manual setup option 
+# If it cannot automatically match the PHP-FPM-USER along with their
+# associated Nginx Cache Path, it offers an easy manual setup option
 # with the 'manual-configs.nginx' file.
-# Mainly, in case your current web server setup involves two distinct 
-# users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER, the solution 
-# proposed by this script involves combining Linux server side tools 
-# 'inotifywait' with 'setfacl' to automatically grant write permissions 
-# to the PHP-FPM-USER for the corresponding Nginx Cache Paths (listening 
-# cache events), which are matched either automatically or via a manual 
+# Mainly, in case your current web server setup involves two distinct
+# users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER, the solution
+# proposed by this script involves combining Linux server side tools
+# 'inotifywait' with 'setfacl' to automatically grant write permissions
+# to the PHP-FPM-USER for the corresponding Nginx Cache Paths (listening
+# cache events), which are matched either automatically or via a manual
 # configuration file.
-# This approach is an alternative to external Nginx modules like Cache 
+# This approach is an alternative to external Nginx modules like Cache
 # Purge module for purge operations.
-# This script creates an npp-wordpress systemd service to manage grant 
+# This script creates an npp-wordpress systemd service to manage grant
 # permission for purge and preload actions.
 
-# After completing the setup (whether automatic or manual), you can manage 
-# the automatically created 'npp-wordpress' systemd service on the WP admin 
+# After completing the setup (whether automatic or manual), you can manage
+# the automatically created 'npp-wordpress' systemd service on the WP admin
 # dashboard NPP plugin settings page.
-# This allows you to start and stop inotifywait/setfacl operations (via 
-# systemd) for Nginx Cache Path directly from the front-end for associated 
+# This allows you to start and stop inotifywait/setfacl operations (via
+# systemd) for Nginx Cache Path directly from the front-end for associated
 # PHP-FPM-USER.
 
 # NOTE
@@ -73,8 +73,8 @@ trap manual_setup SIGINT
 # Get help before any interrupt
 help() {
   if command -v tput > /dev/null 2>&1; then
-    cyan=(tput setaf 6)
-    reset=(tput sgr0)
+    cyan=$(tput setaf 6)
+    reset=$(tput sgr0)
     m_tab='  '
   fi
 
