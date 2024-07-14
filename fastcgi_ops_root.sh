@@ -196,7 +196,7 @@ find_create_includedir() {
       fi
     else
       # We need to add @includedir or #includedir to main sudoers file
-      
+
       # --> Workflow <--
       # 1. Create sudoers backup/tmp files
       # 2. Modify sudoers tmp file according to sudo version
@@ -216,7 +216,7 @@ find_create_includedir() {
       SUDO_VERSION="$(sudo -V | grep 'Sudo version' | awk '{print $3}')"
       VERSION_MAJOR="$(echo "${SUDO_VERSION}" | cut -d. -f1)"
       VERSION_MINOR="$(echo "${SUDO_VERSION}" | cut -d. -f2)"
-	  
+
       # Check if SUDO_VERSION, VERSION_MAJOR, and VERSION_MINOR were successfully retrieved
       if [[ -z "${SUDO_VERSION}" || -z "${VERSION_MAJOR}" || -z "${VERSION_MINOR}" ]]; then
         echo -e "\e[91mCannot find sudo major & minor versions\e[0m"
@@ -259,21 +259,21 @@ find_create_includedir() {
   return 0
 }
 
-# Automate the process of granting specific sudo permissions to the PHP-FPM 
-# process owners on a system. These permissions specifically authorize 
-# PHP-FPM process owners to execute systemctl commands (start, stop, status) 
+# Automate the process of granting specific sudo permissions to the PHP-FPM
+# process owners on a system. These permissions specifically authorize
+# PHP-FPM process owners to execute systemctl commands (start, stop, status)
 # for NPP plugin main systemd service 'npp-wordpress'.
-# By granting these permissions, the goal is to allow the 'npp-wordpress' 
-# systemd service to be controlled directly from the WordPress admin 
+# By granting these permissions, the goal is to allow the 'npp-wordpress'
+# systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
-# This automation enhances security by limiting sudo access to only 
+# This automation enhances security by limiting sudo access to only
 # specific systemd service management tasks.
-# After successful integration, NPP users will be able to manage (start, 
-# stop, status) the 'npp-wordpress' systemd service on WP admin dashboard 
+# After successful integration, NPP users will be able to manage (start,
+# stop, status) the 'npp-wordpress' systemd service on WP admin dashboard
 # NPP plugin settings page.
-# This implementation is not strictly necessary for functional cache 
-# purge & preload actions and does not break the default setup process, 
-# but it is nice to have this ability to control the main plugin systemd 
+# This implementation is not strictly necessary for functional cache
+# purge & preload actions and does not break the default setup process,
+# but it is nice to have this ability to control the main plugin systemd
 # service 'npp-wordpress' on WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
