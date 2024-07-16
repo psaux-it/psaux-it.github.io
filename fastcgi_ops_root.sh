@@ -694,8 +694,8 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Reset/clear associative array that we continue with manual setup
   declare -A fcgi=()
 
-  # Reset/clear forbidden paths that we need to collect them for manual setup
-  forbidden_paths=()
+  # Temporary file to store valid lines
+  temp_file=$(mktemp)
 
   # Read manual configuration file
   while IFS= read -r line; do
@@ -709,16 +709,16 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Validate the format of the line (expects "user cache_path")
     if [[ "$(echo "${line}" | awk '{print NF}')" -ne 2 ]]; then
-      echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must contain only two fields: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
+      echo -e "\e[91mError: \e[96mExcluded: Invalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must contain only two fields: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
       echo -e "\e[91mInvalid line: \e[96m${line}\e[0m"
-      exit 1
+      continue
     fi
 
     # Validate the format of the line (expects "PHP_FPM_USER NGINX_CACHE_PATH")
     if [[ ! "${line}" =~ ^[[:alnum:]_-]+\ [[:print:]]+$ ]]; then
-      echo -e "\e[91mError: \e[96mInvalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must be in the format: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
+      echo -e "\e[91mError: \e[96mExcluded: Invalid format in the manual configuration file '\e[93mmanual-configs.nginx\e[96m'. Each line must be in the format: '\e[93mPHP_FPM_USER NGINX_CACHE_PATH\e[96m'"
       echo -e "\e[91mInvalid line: \e[96m${line}\e[0m"
-      exit 1
+      continue
     fi
 
     # Extract PHP-FPM user and FastCGI cache path from each line
@@ -727,31 +727,45 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Validate the Nginx FastCGI cache path
     if ! validate_cache_paths "${cache_path}"; then
-      forbidden_paths+=("${cache_path}")
+      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: \033[0;31mForbidden Nginx Cache Path: \033[1;33m${cache_path}\033[0m"
+      continue
     fi
 
     # Check if the user exists
     if ! id "${user}" &>/dev/null; then
-      echo -e "\e[91mError:\e[0m User: ${user} specified in the manual configuration file does not exist. Please ensure the user exists and try again."
-      exit 1
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: User: ${user} specified in the manual configuration file does not exist.\e[0m"
+      continue
     fi
 
     # Check if the directory exists
     if [[ ! -d "${cache_path}" ]]; then
-      echo -e "\e[33mWarning: Cache path ${cache_path} for user ${user} does not exist. This website will be excluded.\e[0m"
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: Cache path ${cache_path} for user ${user} does not exist.\e[0m"
+      continue
     fi
 
-    fcgi["${user}"]="${cache_path}"
+    # If all validations pass, write the line to the temporary file
+    echo "${line}" >> "${temp_file}"
   done < "${this_script_path}/manual-configs.nginx"
 
-  if [[ "${#forbidden_paths[@]}" -gt 0 ]]; then
-    echo -e "\033[0;36m\033[91mError:\033[0m \033[0;36mThe following Nginx Cache Paths in '\033[35mmanual-configs.nginx\033[0;36m' file are critical system directories or root directory and cannot be used:\033[0m"
-    echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
+  # Replace the original file with the temporary file
+  mv "${temp_file}" "${this_script_path}/manual-configs.nginx"
 
-    echo ""
-    for invalid in "${forbidden_paths[@]}"; do
-      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
-    done
+  # Remove duplicate lines from config file
+  awk -i inplace '!seen[$0]++' "${this_script_path}/manual-configs.nginx"
+
+  # After validate manual-configs.nginx fully, ready to populate the array
+  # Check if manual-configs.nginx before populating the array, otherwise all excluded?
+  if [[ -s "${this_script_path}/manual-configs.nginx" ]]; then
+    while read -r user path; do
+      if [[ -z "${fcgi[$user]}" ]]; then
+        fcgi["${user}"]="${path}"
+      else
+        fcgi["${user}"]+=":${path}"
+      fi
+    done < "${this_script_path}/manual-configs.nginx"
+  else
+    echo -e "\033[0;31mPlease correct errors occured above, all instances excluded in: \033[1;33mmanual-configs.nginx\033[0m"
     exit 1
   fi
 
