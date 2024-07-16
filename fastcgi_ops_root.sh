@@ -536,6 +536,33 @@ validate_cache_paths() {
   return 0
 }
 
+# Instead of nginx -t
+get_active_vhosts() {
+  sites_enabled_dir="/etc/nginx/sites-enabled/"
+
+  # Check if /etc/nginx/sites-enabled/ exists
+  if [[ ! -d "${sites_enabled_dir}" ]]; then
+    echo ""
+    echo -e "\e[31mError: Nginx configuration directory (\e[33m${sites_enabled_dir}\e[31m) not found in default paths.\e[0m"
+    # Provide instructions for manual configuration
+    echo ""
+    echo -e "\e[35mManual Setup Instructions\e[0m\n\e[36m#########################\e[0m"
+    echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
+    echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
+    echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
+    echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
+    echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
+    echo ""
+    exit 1
+  fi
+
+  for conf_file in /etc/nginx/sites-enabled/*; do
+    if [[ -f "${conf_file}" ]]; then
+        grep -E "server_name|fastcgi_pass" "${conf_file}" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//'
+    fi
+  done
+}
+
 # Auto setup triggers, auto detection stuff
 if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Get nginx.conf
@@ -551,7 +578,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   ACTIVE_VHOSTS=()
   while IFS= read -r VHOST; do
     ACTIVE_VHOSTS+=("${VHOST}")
-  done < <(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
+  done < <(get_active_vhosts)
 
   # Find all php-fpm users
   PHP_FPM_USERS=()
@@ -791,7 +818,6 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   fi
 else
   if (( ${#fcgi[@]} == 0 )); then
-    echo ""
     echo -e "\e[91mError:\e[0m Auto setup failed! Nginx cache paths with associated PHP-FPM users cannot be automatically matched."
     echo -e "\e[91mPlease ensure that your Nginx Cache Path includes the associated PHP-FPM-USER username for proper matching. \e[95mIf you don't want to rename your Nginx Cache Paths, please continue with manual setup.\e[0m"
     # Provide instructions for manual configuration
