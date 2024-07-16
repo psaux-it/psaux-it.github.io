@@ -391,7 +391,7 @@ restart_auto_setup() {
 print_nginx_cache_paths() {
   # Add a short delay to ensure all log entries are captured
   sleep 2
-  journalctl -n 3 -u "${service_file_new##*/}" --no-pager \
+  systemctl status "${service_file_new##*/}" \
     | grep -E '(Started NPP|All done!)' \
     | sed -E 's/.*?(Started NPP|All done!) /\1/' \
     | awk '{
@@ -530,59 +530,90 @@ validate_cache_paths() {
     done
   done
 
-  if [[ ${#invalid_paths[@]} -gt 0 ]]; then
-    if [[ -s "${this_script_path}/manual-configs.nginx" ]]; then
-      echo -e "\033[0;36m\033[91mError:\033[0m \033[0;36mThe following Nginx Cache Paths in '\033[35mmanual-configs.nginx\033[0;36m' file are critical system directories or root directory and cannot be used:\033[0m"
-      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
-    else
-      echo -e "\033[91mError:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m"
-      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
-    fi
-
-    echo ""
-    for invalid in "${invalid_paths[@]}"; do
-      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
-    done
+  if [[ "${#invalid_paths[@]}" -gt 0 ]]; then
     return 1
   fi
+  return 0
 }
 
-# Auto detection stuff
+# Auto setup triggers, auto detection stuff
 if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Get nginx.conf
   detect_nginx_conf
-  # Extract FastCGI Cache Paths from nginx.conf
-  FASTCGI_CACHE_PATHS=$(extract_fastcgi_cache_paths)
-  # Find active vhosts
-  ACTIVE_VHOSTS=$(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
-  # Find all php-fpm users
-  PHP_FPM_USERS=$(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
-  # Validate the found Nginx FastCGI cache paths
-  if ! validate_cache_paths "${FASTCGI_CACHE_PATHS}"; then
+  # Extract FastCGI Cache Paths from nginx.conf
+  FASTCGI_CACHE_PATHS=()
+  while IFS= read -r path; do
+    FASTCGI_CACHE_PATHS+=("${path}")
+  done < <(extract_fastcgi_cache_paths)
+
+  # Initialize forbidden paths array
+  forbidden_paths=()
+
+  # Validate each FastCGI cache path
+  for path in "${FASTCGI_CACHE_PATHS[@]}"; do
+    if ! validate_cache_paths "${path}"; then
+      forbidden_paths+=("${path}")
+    fi
+  done
+
+  # If there is any forbidden path exit
+  if [[ "${#forbidden_paths[@]}" -gt 0 ]]; then
+    echo -e "\033[91mError:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m"
+    echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
+
+    echo ""
+    for invalid in "${forbidden_paths[@]}"; do
+      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
+    done
     exit 1
   fi
 
-  # Associative array to store php-fpm user and fastcgi cache path
-  declare -A fcgi
-
-  # Loop through active vhosts
+  # Find active vhosts
+  ACTIVE_VHOSTS=()
   while IFS= read -r VHOST; do
     ACTIVE_VHOSTS+=("${VHOST}")
+  done < <(nginx -T 2>/dev/null | grep -E "server_name|fastcgi_pass" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//')
+
+  # Find all php-fpm users
+  PHP_FPM_USERS=()
+  while read -r user; do
+    PHP_FPM_USERS+=("${user}")
+  done < <(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
+
+  ACTIVE_PHP_FPM_USERS=()
+  # Loop through active vhosts to find active php fpm users
+  for VHOST in "${ACTIVE_VHOSTS[@]}"; do
     # Extract PHP-FPM users from running processes, excluding root
     while read -r user; do
       ACTIVE_PHP_FPM_USERS+=("${user}")
     done < <(ps -eo user:30,cmd | grep "[p]hp-fpm:.*${VHOST}" | awk '{print $1}' | awk '!seen[$0]++' | grep -v "root")
-  done <<< "${ACTIVE_VHOSTS}"
+  done
 
-  # Check if the PHP-FPM user's name is present in the FastCGI cache path
-  for PHP_FPM_USER in ${PHP_FPM_USERS}; do
-    for FASTCGI_CACHE_PATH in ${FASTCGI_CACHE_PATHS}; do
+  # Remove duplicates from array
+  ACTIVE_PHP_FPM_USERS=($(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}" | sort -u))
+
+  # Associative array to store php-fpm user and fastcgi cache path
+  declare -A fcgi
+
+  # Loop through FASTCGI_CACHE_PATHS to find matches for each PHP_FPM_USER
+  for PHP_FPM_USER in "${PHP_FPM_USERS[@]}"; do
+    fcgi["${PHP_FPM_USER}"]=""
+
+    for FASTCGI_CACHE_PATH in "${FASTCGI_CACHE_PATHS[@]}"; do
       if echo "${FASTCGI_CACHE_PATH}" | grep -q "${PHP_FPM_USER}"; then
-        fcgi["${PHP_FPM_USER}"]="${FASTCGI_CACHE_PATH}"
-        break
+        if [[ -z "${fcgi[${PHP_FPM_USER}]}" ]]; then
+          fcgi["${PHP_FPM_USER}"]="${FASTCGI_CACHE_PATH}"
+        else
+          fcgi["${PHP_FPM_USER}"]="${fcgi[${PHP_FPM_USER}]}:${FASTCGI_CACHE_PATH}"
+        fi
       fi
     done
+
+    # Remove entry if no cache paths were found for the user
+    if [[ -z "${fcgi[${PHP_FPM_USER}]}" ]]; then
+      unset fcgi["${PHP_FPM_USER}"]
+    fi
   done
 
   # Check if the user exists
@@ -663,6 +694,9 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Reset/clear associative array that we continue with manual setup
   declare -A fcgi=()
 
+  # Reset/clear forbidden paths that we need to collect them for manual setup
+  forbidden_paths=()
+
   # Read manual configuration file
   while IFS= read -r line; do
     # Trim leading and trailing whitespace from the line
@@ -693,7 +727,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Validate the Nginx FastCGI cache path
     if ! validate_cache_paths "${cache_path}"; then
-      exit 1
+      forbidden_paths+=("${cache_path}")
     fi
 
     # Check if the user exists
@@ -709,6 +743,17 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     fcgi["${user}"]="${cache_path}"
   done < "${this_script_path}/manual-configs.nginx"
+
+  if [[ "${#forbidden_paths[@]}" -gt 0 ]]; then
+    echo -e "\033[0;36m\033[91mError:\033[0m \033[0;36mThe following Nginx Cache Paths in '\033[35mmanual-configs.nginx\033[0;36m' file are critical system directories or root directory and cannot be used:\033[0m"
+    echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
+
+    echo ""
+    for invalid in "${forbidden_paths[@]}"; do
+      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
+    done
+    exit 1
+  fi
 
   # Check manual setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
@@ -739,21 +784,16 @@ else
 
   # check auto setup already completed or not
   if ! [[ -f "${this_script_path}/auto_setup_on" ]]; then
-    # Remove duplicates from array
-    ACTIVE_PHP_FPM_USERS=($(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}" | sort -u))
-    # Convert PHP_FPM_USERS string to an array
-    IFS=$'\n' read -r -d '' -a PHP_FPM_USERS <<< "${PHP_FPM_USERS}"
-
     echo ""
     echo -e "\e[32mAUTO DETECTION STARTED\e[0m"
     echo -e "\e[96mNOTE: You can always continue with the manual setup via (\e[95mN/n\e[96m) if the auto detection does not work for you.\e[0m"
     echo ""
     echo -e "\e[32mFound PHP-FPM-USERS:\e[0m"
-    echo -e "\e[35m${PHP_FPM_USERS[@]:-"None"}\e[0m"
+    echo -e "\e[35m${PHP_FPM_USERS[@]:-"-"}\e[0m"
     echo -e "\e[32mActive PHP-FPM-USERS:\e[0m"
-    echo -e "\e[35m${ACTIVE_PHP_FPM_USERS[@]:-"None"}\e[0m"
+    echo -e "\e[35m${ACTIVE_PHP_FPM_USERS[@]:-"-"}\e[0m"
     echo -e "\e[32mOndemand PHP-FPM-USERS:\e[0m"
-    echo -e "\e[35m$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}"))\e[0m"
+    echo -e "\e[35m$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}") || echo '-')\e[0m"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
     echo ""
@@ -778,85 +818,89 @@ else
   fi
 fi
 
-# listens fastcgi cache folder for create events and
-# give write permission to website user for further purge operations.
+# Start to listen Nginx Cache Paths events (inotifywait) to
+# give read/write permission to associated PHP-FPM-USERs (setfacl)
 inotify-start() {
-  # Check instances properly
-  if (( ${#fcgi[@]} == 0 )); then
-    # If non instance set up, exit
-    echo "There is no any instance, please read documentation"
+  # Count total instances (PHP-FPM-USR_Nginx Cache Path pairs)
+  count_instances() {
+    local count=0
+    for user in "${!fcgi[@]}"; do
+      IFS=':' read -r -a paths <<< "${fcgi[$user]}"
+      count=$((count + ${#paths[@]}))
+    done
+    echo $count
+  }
+
+  # Check any "PHP-FPM-USER | Nginx Cache Path" instance found, if not exit before validation
+  instance_count=$(count_instances)
+  if (( instance_count == 0 )); then
+    # If no instance set up, exit
+    echo "There are no instances configured. Please check your configuration."
     exit 1
-  elif (( ${#fcgi[@]} == 1 )); then
-    # if only one instance exists and it is broken, exit
-    for path in "${!fcgi[@]}"; do
-      if ! [[ -d "${fcgi[$path]}" ]]; then
-        echo -e "\e[91mError:\e[0m \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) not found, if path is correct please restart \e[93mnginx.service\e[96m to automatically create it\e[0m"
-        exit 1
-      fi
-    done
-  elif (( ${#fcgi[@]} > 1 )); then
-    # In many instances If only one instance is broken, exclude and continue
-    for path in "${!fcgi[@]}"; do
-      if ! [[ -d "${fcgi[$path]}" ]]; then
-        echo -e "\e[93mWarning:\e[0m \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) not found, if path is correct please restart \e[93mnginx.service\e[96m to automatically create it, EXCLUDED\e[0m"
-        unset "fcgi[$path]"
-      fi
-    done
   fi
 
-  # Prevent starting multiple instances for same path
-  for path in "${!fcgi[@]}"; do
-    if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo -e "\e[93mWarning: \e[96mYour FastCGI cache directory (\e[93m${fcgi[$path]}\e[96m) is already listening, EXCLUDED\e[0m"
-      unset "fcgi[$path]"
-    fi
-  done
+  # Let's start "PHP-FPM-USER | Nginx Cache Path" instances;
+  # 1) Check Nginx Cache Paths exists
+  # 2) Check instance already active
+  for user in "${!fcgi[@]}"; do
+    IFS=':' read -r -a paths <<< "${fcgi[$user]}"
 
-  # Check if all instances are excluded and already running
-  all_excluded=true
-  for path in "${!fcgi[@]}"; do
-    if ! pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      all_excluded=false
-      break
-    fi
-  done
+    for path in "${paths[@]}"; do
+      if [[ -d "${path}" ]]; then
+        if ! pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+          setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
 
-  # Exit if all instances are excluded and already running
-  if [[ "${all_excluded}" = true ]]; then
-    echo "All instances(paths) already listening, nothing to do"
-    exit 0
-  fi
+          # Start inotifywait/setfacl
+          while read -r directory event file_folder; do
+            # While this loop is working, if fastcgi cache path
+            # is deleted manually by the user that causes strange
+            # behaviors, kill it
+            if [[ ! -d "${path}" ]]; then
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+              echo "Nginx Cache folder ${path} destroyed manually, inotifywait/setfacl process for PHP-FPM-USER: ${user} is killed!"
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+              break
+            fi
 
-  # start to listen fastcgi cache folder events
-  # give write permission to website user for further purge ops
-  for user in "${!fcgi[@]}"
-  do
-    setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${fcgi[$user]}"/
-    # Start inotifywait/setfacl
-    while read -r directory event file_folder; do
-      # While this loop working If fastcgi cache path
-      # deleted manually by user that cause strange
-      # behaviours, kill it
-      if [[ ! -d "${fcgi[$user]}" ]]; then
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        echo "Cache folder ${fcgi[$user]} destroyed manually, inotifywait/setfacl process for user: ${user} is killed!"
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        break
+            # Set ACLs for files and folders created and modified in cache directory
+            setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
+          done < <(inotifywait -m -q -e modify,create -r "${path}") >/dev/null 2>&1 &
+        else
+          echo -e "\e[93mWarning: \e[96mNginx FastCGI cache directory: (\e[93m${path}\e[96m) is already listening, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
+        fi
+      else
+        echo -e "\e[93mWarning:\e[0m \e[96mNginx FastCGI Cache directory: (\e[93m${path}\e[96m) not found, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
       fi
-
-      # Set ACLs for files and folders created and modified in cache directory
-      setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${fcgi[$user]}"/
-    done < <(inotifywait -m -q -e modify,create -r "${fcgi[$user]}") >/dev/null 2>&1 &
+    done
   done
 
-  # Check if inotifywait processes are alive
-  for path in "${!fcgi[@]}"; do
-    if pgrep -f "inotifywait.*${fcgi[$path]}" >/dev/null 2>&1; then
-      echo "All done! Started to listen to Nginx FastCGI Cache Path: (${fcgi[$path]}) events to set up ACLs for PHP-FPM-USER: (${path})"
-    else
-      echo "Unknown error occurred during cache listen event."
-    fi
+  # Check and print active "PHP-FPM-USER | Nginx Cache Path" instance status
+  declare -a messages
+  instance_count=0
+
+  for user in "${!fcgi[@]}"; do
+    IFS=':' read -r -a paths <<< "${fcgi[$user]}"
+
+    for path in "${paths[@]}"; do
+      if pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+        messages+=("All done! Started to listen to Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
+        (( instance_count++ ))
+      else
+        messages+=("Unknown error occurred during cache listen event for path: ${path}")
+      fi
+    done
   done
+
+  # Check instance statuses
+  if (( instance_count == 0 )); then
+    echo "All instances have been excluded due to invalid paths."
+    exit 1
+  else
+    # Output all messages collected
+    for message in "${messages[@]}"; do
+      echo "$message"
+    done
+  fi
 }
 
 # stop on-going preload actions
