@@ -821,8 +821,8 @@ else
     echo -e "\e[35m${PHP_FPM_USERS[@]:-"-"}\e[0m"
     echo -e "\e[32mActive PHP-FPM-USERS:\e[0m"
     echo -e "\e[35m${ACTIVE_PHP_FPM_USERS[@]:-"-"}\e[0m"
-    echo -e "\e[32mOndemand PHP-FPM-USERS:\e[0m"
-    echo -e "\e[35m$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}") || echo '-')\e[0m"
+    echo -e "\e[32mPassive PHP-FPM-USERS:\e[0m"
+    echo -e "\e[35m$(comm -23 <(printf "%s\n" "${PHP_FPM_USERS[@]}") <(printf "%s\n" "${ACTIVE_PHP_FPM_USERS[@]}") | tr '\n' ' ' | sed 's/ $//' || echo '-')\e[0m"
 
     # Print detected FastCGI cache paths and associated PHP-FPM users for auto setup confirmation
     echo ""
