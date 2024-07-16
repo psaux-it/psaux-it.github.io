@@ -547,28 +547,6 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     FASTCGI_CACHE_PATHS+=("${path}")
   done < <(extract_fastcgi_cache_paths)
 
-  # Initialize forbidden paths array
-  forbidden_paths=()
-
-  # Validate each FastCGI cache path
-  for path in "${FASTCGI_CACHE_PATHS[@]}"; do
-    if ! validate_cache_paths "${path}"; then
-      forbidden_paths+=("${path}")
-    fi
-  done
-
-  # If there is any forbidden path exit
-  if [[ "${#forbidden_paths[@]}" -gt 0 ]]; then
-    echo -e "\033[91mError:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m"
-    echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
-
-    echo ""
-    for invalid in "${forbidden_paths[@]}"; do
-      echo -e "\033[0;31mForbidden Nginx Cache Path: \033[1;33m${invalid}\033[0m"
-    done
-    exit 1
-  fi
-
   # Find active vhosts
   ACTIVE_VHOSTS=()
   while IFS= read -r VHOST; do
@@ -596,11 +574,46 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Associative array to store php-fpm user and fastcgi cache path
   declare -A fcgi
 
-  # Loop through FASTCGI_CACHE_PATHS to find matches for each PHP_FPM_USER
+  # Accumulate validation errors
+  critical_path_error=""
+  cache_path_not_exist_error=""
+  user_not_exist_error=""
+
+  # Loop through FASTCGI_CACHE_PATHS to find matches for each PHP_FPM_USER with validation
   for PHP_FPM_USER in "${PHP_FPM_USERS[@]}"; do
+    # Check if the user exists
+    if ! id "${PHP_FPM_USER}" &>/dev/null; then
+      error_message="\033[33mWarning: \e[0m\e[96mExcluded: User: ${PHP_FPM_USER} does not exist. Please ensure the user exists.\e[0m\n"
+      if [[ ! "${user_not_exist_error}" =~ "${error_message}" ]]; then
+        user_not_exist_error+="${error_message}"
+      fi
+      continue
+    fi
+
     fcgi["${PHP_FPM_USER}"]=""
 
     for FASTCGI_CACHE_PATH in "${FASTCGI_CACHE_PATHS[@]}"; do
+      # Check if the Nginx Cache directory exists
+      if [[ ! -d "${FASTCGI_CACHE_PATH}" ]]; then
+        error_message="\033[33mWarning: \e[0m\e[96mExcluded: Nginx Cache Path: ${FASTCGI_CACHE_PATH} does not exist.\e[0m\n"
+        if [[ ! "${cache_path_not_exist_error}" =~ "${error_message}" ]]; then
+          cache_path_not_exist_error+="${error_message}"
+        fi
+        continue
+      fi
+
+      # Validate each FastCGI cache path
+      if ! validate_cache_paths "${FASTCGI_CACHE_PATH}"; then
+        error_message="\033[33mWarning:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m\n"
+        error_message+="\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m\n"
+        error_message+="\033[0;31mExcluded forbidden Nginx Cache Path: \033[1;33m${FASTCGI_CACHE_PATH}\033[0m\n"
+        if [[ ! "${critical_path_error}" =~ "${error_message}" ]]; then
+          critical_path_error+="${error_message}"
+        fi
+        continue
+      fi
+
+      # After validate auto detection fully, ready to populate the array
       if echo "${FASTCGI_CACHE_PATH}" | grep -q "${PHP_FPM_USER}"; then
         if [[ -z "${fcgi[${PHP_FPM_USER}]}" ]]; then
           fcgi["${PHP_FPM_USER}"]="${FASTCGI_CACHE_PATH}"
@@ -616,13 +629,19 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     fi
   done
 
-  # Check if the user exists
-  for user in "${!fcgi[@]}"; do
-    if ! id "${user}" &>/dev/null; then
-      echo -e "\e[91mError:\e[0m User: ${user} does not exist. Please ensure the user exists and try again."
-      exit 1
-    fi
-  done
+  # Print accumulated validation errors if any
+  if [[ -n "${critical_path_error}" || -n "${cache_path_not_exist_error}" || -n "${user_not_exist_error}" ]]; then
+    echo ""
+    [[ -n "${user_not_exist_error}" ]] && echo -e "${user_not_exist_error}"
+    [[ -n "${cache_path_not_exist_error}" ]] && echo -e "${cache_path_not_exist_error}"
+    [[ -n "${critical_path_error}" ]] && echo -e "${critical_path_error}"
+  fi
+
+  # Check if all instances are excluded
+  if [[ ${#fcgi[@]} -eq 0 ]]; then
+    echo -e "\033[0;31mPlease correct errors occured above, all instances fails! \e[0m"
+    exit 1
+  fi
 fi
 
 # Systemd operations
@@ -676,11 +695,6 @@ check_and_start_systemd_service() {
     else
       echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to start."
     fi
-  else
-    if systemctl is-active --quiet "${service_file_new##*/}"; then
-      systemctl stop "${service_file_new##*/}" > /dev/null 2>&1
-    fi
-    systemctl start "${service_file_new##*/}" > /dev/null 2>&1 && echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started."
   fi
 }
 
@@ -861,30 +875,26 @@ inotify-start() {
     IFS=':' read -r -a paths <<< "${fcgi[$user]}"
 
     for path in "${paths[@]}"; do
-      if [[ -d "${path}" ]]; then
-        if ! pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+      if ! pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+        setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
+
+        # Start inotifywait/setfacl
+        while read -r directory event file_folder; do
+          # While this loop is working, if fastcgi cache path
+          # is deleted manually by the user that causes strange
+          # behaviors, kill it
+          if [[ ! -d "${path}" ]]; then
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo "Nginx Cache folder ${path} destroyed manually, inotifywait/setfacl process for PHP-FPM-USER: ${user} is killed!"
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            break
+          fi
+
+          # Set ACLs for files and folders created and modified in cache directory
           setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
-
-          # Start inotifywait/setfacl
-          while read -r directory event file_folder; do
-            # While this loop is working, if fastcgi cache path
-            # is deleted manually by the user that causes strange
-            # behaviors, kill it
-            if [[ ! -d "${path}" ]]; then
-              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-              echo "Nginx Cache folder ${path} destroyed manually, inotifywait/setfacl process for PHP-FPM-USER: ${user} is killed!"
-              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-              break
-            fi
-
-            # Set ACLs for files and folders created and modified in cache directory
-            setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
-          done < <(inotifywait -m -q -e modify,create -r "${path}") >/dev/null 2>&1 &
-        else
-          echo -e "\e[93mWarning: \e[96mNginx FastCGI cache directory: (\e[93m${path}\e[96m) is already listening, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
-        fi
+        done < <(inotifywait -m -q -e modify,create -r "${path}") >/dev/null 2>&1 &
       else
-        echo -e "\e[93mWarning:\e[0m \e[96mNginx FastCGI Cache directory: (\e[93m${path}\e[96m) not found, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
+        echo -e "\e[93mWarning: \e[96mNginx FastCGI cache directory: (\e[93m${path}\e[96m) is already listening, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
       fi
     done
   done
