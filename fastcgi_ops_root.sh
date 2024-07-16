@@ -636,12 +636,6 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     [[ -n "${cache_path_not_exist_error}" ]] && echo -e "${cache_path_not_exist_error}"
     [[ -n "${critical_path_error}" ]] && echo -e "${critical_path_error}"
   fi
-
-  # Check if all instances are excluded
-  if [[ ${#fcgi[@]} -eq 0 ]]; then
-    echo -e "\033[0;31mPlease correct errors occured above, all instances fails! \e[0m"
-    exit 1
-  fi
 fi
 
 # Systemd operations
@@ -799,8 +793,7 @@ else
   if (( ${#fcgi[@]} == 0 )); then
     echo ""
     echo -e "\e[91mError:\e[0m Auto setup failed! Nginx cache paths with associated PHP-FPM users cannot be automatically matched."
-    echo -e "\e[91mPlease ensure that your Nginx Cache Path includes the associated PHP-FPM-USER username for proper matching. If you don't want to rename your Nginx Cache Paths, please continue with manual setup.\e[0m"
-    echo -e "\e[91mPlease ensure that your Nginx configuration is properly set up. \e[95mIf the issue persist please try to manual setup.\e[0m"
+    echo -e "\e[91mPlease ensure that your Nginx Cache Path includes the associated PHP-FPM-USER username for proper matching. \e[95mIf you don't want to rename your Nginx Cache Paths, please continue with manual setup.\e[0m"
     # Provide instructions for manual configuration
     echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
     echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
