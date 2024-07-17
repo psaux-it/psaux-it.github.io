@@ -46,7 +46,7 @@
 # systemd) for Nginx Cache Path directly from the front-end for associated
 # PHP-FPM-USER.
 
-# NOTE
+# NOTE-1
 # ---------
 # Furthermore, if you're hosting multiple WordPress sites each with their own
 # Nginx cache paths and associated PHP-FPM users on the same host, you'll find
@@ -54,6 +54,25 @@
 # WordPress instances using the NPP plugin. This streamlined approach centralizes
 # cache management tasks, ensuring optimal efficiency and simplified maintenance
 # throughout your server environment.
+
+# NOTE-2
+# ---------
+# Please read carefully the comments between at line 284-303 that about granting
+# specific sudo permissions to the PHP-FPM process owners to manage 'npp-wordpress'
+# systemd service directly on WP admin dashboard NPP plugin settings page.
+
+# NOTE-3
+# ---------
+# If Auto detection not works for you, for proper matching, please ensure that your
+# Nginx Cache Path includes the associated PHP-FPM-USER username.
+# For example assuming your PHP-FPM-USER = psauxit
+
+# The bellow example fastcgi_cache_path formats will match perfectly with your PHP-FPM-USER
+# /dev/shm/fastcgi-cache-psauxit
+# /dev/shm/cache-psauxit
+# /dev/shm/psauxit
+# /var/cache/psauxit-fastcgi
+# /var/cache/website-psauxit.com
 
 # Manual setup instructions
 manual_setup() {
@@ -264,20 +283,24 @@ find_create_includedir() {
 
 # Automate the process of granting specific sudo permissions to the PHP-FPM
 # process owners on a system. These permissions specifically authorize
-# PHP-FPM process owners to execute systemctl commands (start, stop, status)
-# for NPP plugin main systemd service 'npp-wordpress'.
+# PHP process owners to execute systemctl commands (restart, status)
+# for NPP plugin systemd service 'npp-wordpress'.
 # By granting these permissions, the goal is to allow the 'npp-wordpress'
 # systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
-# This automation enhances security by limiting sudo access to only
-# specific systemd service management tasks.
-# After successful integration, NPP users will be able to manage (start,
-# stop, status) the 'npp-wordpress' systemd service on WP admin dashboard
+# After successful integration, NPP users will be able to manage (restart,
+# status) the 'npp-wordpress' systemd service on WP admin dashboard
 # NPP plugin settings page.
 # This implementation is not strictly necessary for functional cache
 # purge & preload actions and does not break the default setup process,
-# but it is nice to have this ability to control the main plugin systemd
-# service 'npp-wordpress' on WP admin dashboard.
+# but it is important to have this ability to control the NPP plugin systemd
+# service 'npp-wordpress' on WP admin dashboard to deal with premission issues
+# directly from front-end.
+# Because 'inotifywait' encounters issues during rapid cache events in the
+# Nginx Cache folder, during cache preloading, which can lead to failures in
+# 'inotifywait/setfacl' operations and permission issues. In such situations,
+# NPP users can resolve this problem by restarting 'npp-wordpress' from the
+# WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
   if find_create_includedir; then
