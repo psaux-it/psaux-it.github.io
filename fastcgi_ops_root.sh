@@ -135,6 +135,9 @@ fi
 shopt -s extglob
 this_script_path="${this_script_path%%+(/)}"
 
+# Nginx configuration files
+sites_enabled_dir="/etc/nginx/sites-enabled/"
+
 # Systemd service files
 service_file_new="/etc/systemd/system/npp-wordpress.service"
 service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
@@ -538,8 +541,6 @@ validate_cache_paths() {
 
 # Instead of nginx -t
 get_active_vhosts() {
-  sites_enabled_dir="/etc/nginx/sites-enabled/"
-
   # Check if /etc/nginx/sites-enabled/ exists
   if [[ ! -d "${sites_enabled_dir}" ]]; then
     echo ""
@@ -556,7 +557,7 @@ get_active_vhosts() {
     exit 1
   fi
 
-  for conf_file in /etc/nginx/sites-enabled/*; do
+  for conf_file in "${sites_enabled_dir}"*; do
     if [[ -f "${conf_file}" ]]; then
         grep -E "server_name|fastcgi_pass" "${conf_file}" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//'
     fi
