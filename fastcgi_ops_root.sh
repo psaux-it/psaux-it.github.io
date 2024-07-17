@@ -906,19 +906,18 @@ inotify-start() {
   # Check any "PHP-FPM-USER | Nginx Cache Path" instance found, if not exit before validation
   instance_count=$(count_instances)
   if (( instance_count == 0 )); then
-    # If no instance set up, exit
+    # If no instance found, exit
     echo "There are no instances configured. Please check your configuration."
     exit 1
   fi
 
   # Let's start "PHP-FPM-USER | Nginx Cache Path" instances;
-  # 1) Check Nginx Cache Paths exists
-  # 2) Check instance already active
   for user in "${!fcgi[@]}"; do
     IFS=':' read -r -a paths <<< "${fcgi[$user]}"
 
     for path in "${paths[@]}"; do
       if ! pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+        # Trigger one time recursive
         setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
 
         # Start inotifywait/setfacl
@@ -954,17 +953,20 @@ inotify-start() {
         messages+=("All done! Started to listen to Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
         (( instance_count++ ))
       else
-        messages+=("Unknown error occurred during cache listen event for path: ${path}")
+        messages+=("Unknown error occurred during starting to listen Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
       fi
     done
   done
 
   # Check instance statuses
   if (( instance_count == 0 )); then
-    echo "All instances have been excluded due to invalid paths."
-    exit 1
+    echo "All instances are already listening, excluded, or failed to start."
+    # Output all error messages collected
+    for message in "${messages[@]}"; do
+      echo "$message"
+    done
   else
-    # Output all messages collected
+    # Output all success messages collected
     for message in "${messages[@]}"; do
       echo "$message"
     done
