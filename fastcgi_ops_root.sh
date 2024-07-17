@@ -282,8 +282,8 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
     if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
       SYSTEMCTL_PATH=$(type -P systemctl)
       for user in "${!fcgi[@]}"; do
-        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start ${service_file_new##*/}, ${SYSTEMCTL_PATH} stop ${service_file_new##*/}, ${SYSTEMCTL_PATH} status ${service_file_new##*/}"
-        echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM user: ${user}\e[0m"; return 1; }
+        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} status ${service_file_new##*/}"
+        echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
       done
       chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
     fi
@@ -294,7 +294,7 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
   # Check the integrity, checking main sudoers file is enough it also checks the includedir paths
   if ! visudo -c -f "${SUDOERS_FILE}" > /dev/null 2>&1; then
     # Revert back changes
-    rm "${includedir_path:?}/${NPP_SUDOERS:?}"
+    rm -f "${includedir_path:?}/${NPP_SUDOERS:?}"
     return 1
   fi
   return 0
