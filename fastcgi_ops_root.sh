@@ -696,7 +696,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
         continue
       fi
 
-      # After validate auto detection fully, ready to populate the array
+      # After validation completed, ready to populate the array
       if echo "${FASTCGI_CACHE_PATH}" | grep -q "${PHP_FPM_USER}"; then
         if [[ -z "${fcgi[${PHP_FPM_USER}]}" ]]; then
           fcgi["${PHP_FPM_USER}"]="${FASTCGI_CACHE_PATH}"
@@ -827,7 +827,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     # WEBSERVER-USER is same with PHP-FPM-USER that means PHP-FPM-USER have
     # read/write permission for Nginx Cache Path already.
     if [[ "${user}" == "nginx" || "${user}" == "www-data" ]]; then
-      echo -e "\e[91mError: \e[0m\e[96mExcluded: PHP-FPM-USER: ${user} is the same as the WEBSERVER-USER, indicating that it already has read/write permissions for the Nginx Cache Path.\e[0m"
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: PHP-FPM-USER: ${user} is the same as the WEBSERVER-USER, indicating that it already has read/write permissions for the ${cache_path}\e[0m"
       continue
     fi
 
