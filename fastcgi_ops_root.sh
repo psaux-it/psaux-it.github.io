@@ -646,6 +646,19 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
   # Loop through FASTCGI_CACHE_PATHS to find matches for each PHP_FPM_USER with validation
   for PHP_FPM_USER in "${PHP_FPM_USERS[@]}"; do
+    # Skip empty elements in PHP_FPM_USERS array
+    if [[ -z "${PHP_FPM_USER}" ]]; then
+      continue
+    fi
+
+    # Here we assume current Nginx web server setup not involves distinct users and
+    # WEBSERVER-USER is same with PHP-FPM-USER that means PHP-FPM-USER have
+    # read/write permission for Nginx Cache Path already.
+    if [[ "${PHP_FPM_USER}" == "nginx" || "${PHP_FPM_USER}" == "www-data" ]]; then
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: PHP-FPM-USER: ${PHP_FPM_USER} is the same as the WEBSERVER-USER, indicating that it already has read/write permissions for the Nginx Cache Path.\e[0m"
+      continue
+    fi
+    
     # Check if the user exists
     if ! id "${PHP_FPM_USER}" &>/dev/null; then
       error_message="\033[33mWarning: \e[0m\e[96mExcluded: User: ${PHP_FPM_USER} does not exist. Please ensure the user exists.\e[0m\n"
@@ -658,6 +671,11 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     fcgi["${PHP_FPM_USER}"]=""
 
     for FASTCGI_CACHE_PATH in "${FASTCGI_CACHE_PATHS[@]}"; do
+      # Skip empty elements in FASTCGI_CACHE_PATHS array
+      if [[ -z "${FASTCGI_CACHE_PATH}" ]]; then
+        continue
+      fi
+      
       # Check if the Nginx Cache directory exists
       if [[ ! -d "${FASTCGI_CACHE_PATH}" ]]; then
         error_message="\033[33mWarning: \e[0m\e[96mExcluded: Nginx Cache Path: ${FASTCGI_CACHE_PATH} does not exist.\e[0m\n"
@@ -802,6 +820,14 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     if ! validate_cache_paths "${cache_path}"; then
       echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
       echo -e "\e[91mError: \e[0m\e[96mExcluded: \033[0;31mForbidden Nginx Cache Path: \033[1;33m${cache_path}\033[0m"
+      continue
+    fi
+
+    # Here we assume current Nginx web server setup not involves distinct users and
+    # WEBSERVER-USER is same with PHP-FPM-USER that means PHP-FPM-USER have
+    # read/write permission for Nginx Cache Path already.
+    if [[ "${user}" == "nginx" || "${user}" == "www-data" ]]; then
+      echo -e "\e[91mError: \e[0m\e[96mExcluded: PHP-FPM-USER: ${user} is the same as the WEBSERVER-USER, indicating that it already has read/write permissions for the Nginx Cache Path.\e[0m"
       continue
     fi
 
