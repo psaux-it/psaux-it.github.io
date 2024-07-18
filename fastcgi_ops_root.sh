@@ -154,9 +154,6 @@ fi
 shopt -s extglob
 this_script_path="${this_script_path%%+(/)}"
 
-# Nginx configuration files
-sites_enabled_dir="/etc/nginx/sites-enabled/"
-
 # Systemd service files
 service_file_new="/etc/systemd/system/npp-wordpress.service"
 service_file_old="/etc/systemd/system/wp-fcgi-notify.service"
@@ -564,27 +561,44 @@ validate_cache_paths() {
 
 # Instead of nginx -t
 get_active_vhosts() {
-  # Check if /etc/nginx/sites-enabled/ exists
-  if [[ ! -d "${sites_enabled_dir}" ]]; then
-    echo ""
-    echo -e "\e[31mError: Nginx configuration directory (\e[33m${sites_enabled_dir}\e[31m) not found in default paths.\e[0m"
-    # Provide instructions for manual configuration
-    echo ""
-    echo -e "\e[35mManual Setup Instructions\e[0m\n\e[36m#########################\e[0m"
-    echo -e "\n\e[36mTo set up manual configuration, create a file named \e[95m'manual-configs.nginx' \e[0m \e[36min current directory."
-    echo -e "Each entry should follow the format: 'PHP_FPM_USER NGINX_CACHE_PATH', with one entry per virtual host, space-delimited."
-    echo -e "Example --> psauxit /dev/shm/fastcgi-cache-psauxit <--"
-    echo -e "Ensure that every new website added to your host is accompanied by an entry in this file."
-    echo -e "After making changes, remember to restart the script \e[95mfastcgi_ops_root.sh\e[0m."
-    echo ""
-    exit 1
-  fi
+  # Get nginx.conf
+  detect_nginx_conf
 
-  for conf_file in "${sites_enabled_dir}"*; do
-    if [[ -f "${conf_file}" ]]; then
-        grep -E "server_name|fastcgi_pass" "${conf_file}" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//'
+  # Initialize an empty array for included paths
+  include_dirs=()
+
+  # Get included paths from nginx.conf
+  while IFS= read -r include_line; do
+    include_path="$(echo "${include_line}" | awk '{print $2}')"
+    # Check wildcard for multiple files
+    if [[ "${include_path}" == *"*"* ]]; then
+      # Remove wildcard, slash, get the exact path
+      dir="$(echo "${include_path}" | sed 's/\*.*//' | sed 's/\/$//')"
+      include_dirs+=("${dir}")
+    else
+      # This is a directly included single file
+      include_dirs+=("${include_path}")
     fi
-  done
+  done < <(grep -E "^\s*include\s+" "${NGINX_CONF}" | grep -v "^\s*#" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/;//')
+
+  # Check if include_dirs array is not empty before processing
+  if (( "${#include_dirs[@]}" )); then
+    # Ensure all paths in the include_dirs end with '/'
+    for i in "${!include_dirs[@]}"; do
+      include_dirs[$i]="${include_dirs[$i]%/}/"
+    done
+
+    # Get active vhosts in include_dirs
+    for dir in "${include_dirs[@]}"; do
+      if [[ -d "${dir}" ]]; then
+        for conf_file in "${dir}"*; do
+          if [[ -f "${conf_file}" ]]; then
+            grep -E "server_name|fastcgi_pass" "${conf_file}" | grep -B1 "fastcgi_pass" | grep "server_name" | awk '{print $2}' | sed 's/;$//'
+          fi
+        done
+      fi
+    done
+  fi
 }
 
 # Auto setup triggers, auto detection stuff
@@ -608,7 +622,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   PHP_FPM_USERS=()
   while read -r user; do
     PHP_FPM_USERS+=("${user}")
-  done < <(grep -ri -h -E "^\s*user\s*=" /etc/php | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
+  done < <(grep -ri -h -E "^\s*user\s*=" /etc/php*/ | awk -F '=' '{print $2}' | sort | uniq | sed 's/^\s*//;s/\s*$//' | grep -v "nobody")
 
   ACTIVE_PHP_FPM_USERS=()
   # Loop through active vhosts to find active php fpm users
