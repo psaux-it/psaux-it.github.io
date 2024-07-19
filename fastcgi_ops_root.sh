@@ -57,7 +57,7 @@
 
 # NOTE-2
 # ---------
-# Please read carefully the comments between at line 284-303 that about granting
+# Please read carefully the comments between at line 281-300 that about granting
 # specific sudo permissions to the PHP-FPM process owners to manage 'npp-wordpress'
 # systemd service directly on WP admin dashboard NPP plugin settings page.
 
