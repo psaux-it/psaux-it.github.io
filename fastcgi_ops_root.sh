@@ -280,12 +280,12 @@ find_create_includedir() {
 
 # Automate the process of granting specific sudo permissions to the PHP-FPM
 # process owners on a system. These permissions specifically authorize
-# PHP process owners to execute systemctl commands (restart, status)
+# PHP process owners to execute systemctl commands (, status)
 # for NPP plugin systemd service 'npp-wordpress'.
 # By granting these permissions, the goal is to allow the 'npp-wordpress'
 # systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
-# After successful integration, NPP users will be able to manage (restart,
+# After successful integration, NPP users will be able to manage (,
 # status) the 'npp-wordpress' systemd service on WP admin dashboard
 # NPP plugin settings page.
 # This implementation is not strictly necessary for functional cache
@@ -296,7 +296,7 @@ find_create_includedir() {
 # Because 'inotifywait' encounters issues during rapid cache events in the
 # Nginx Cache folder, during cache preloading, which can lead to failures in
 # 'inotifywait/setfacl' operations and permission issues. In such situations,
-# NPP users can resolve this problem by restarting 'npp-wordpress' from the
+# NPP users can resolve this problem by ing 'npp-wordpress' from the
 # WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
@@ -305,7 +305,7 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
     if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
       SYSTEMCTL_PATH=$(type -P systemctl)
       for user in "${!fcgi[@]}"; do
-        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} status ${service_file_new##*/}"
+        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
         echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
       done
       chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
