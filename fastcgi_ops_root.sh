@@ -280,13 +280,13 @@ find_create_includedir() {
 
 # Automate the process of granting specific sudo permissions to the PHP-FPM
 # process owners on a system. These permissions specifically authorize
-# PHP process owners to execute systemctl commands (, status)
+# PHP process owners to execute systemctl commands (restart, is-active)
 # for NPP plugin systemd service 'npp-wordpress'.
 # By granting these permissions, the goal is to allow the 'npp-wordpress'
 # systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
-# After successful integration, NPP users will be able to manage (,
-# status) the 'npp-wordpress' systemd service on WP admin dashboard
+# After successful integration, NPP users will be able to manage (restart,
+# is-active) the 'npp-wordpress' systemd service on WP admin dashboard
 # NPP plugin settings page.
 # This implementation is not strictly necessary for functional cache
 # purge & preload actions and does not break the default setup process,
@@ -296,7 +296,7 @@ find_create_includedir() {
 # Because 'inotifywait' encounters issues during rapid cache events in the
 # Nginx Cache folder, during cache preloading, which can lead to failures in
 # 'inotifywait/setfacl' operations and permission issues. In such situations,
-# NPP users can resolve this problem by ing 'npp-wordpress' from the
+# NPP users can resolve this problem by restarting 'npp-wordpress' from the
 # WP admin dashboard.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
