@@ -18,4 +18,21 @@
 
 # Wrapper script for Nginx FastCGI Cache Purge & Preload Plugin for Wordpress
 
-curl -Ss https://psaux-it.github.io/fastcgi_ops_root.sh -o fastcgi_ops_root.sh && chmod +x fastcgi_ops_root.sh && bash fastcgi_ops_root.sh
+# URL to download the script
+URL="https://psaux-it.github.io/fastcgi_ops_root.sh"
+MAIN_SCRIPT="fastcgi_ops_root.sh"
+
+# Function to check for curl and wget, and download the main script using the available tool
+download_and_execute_fastcgi_ops_root() {
+    if command -v curl > /dev/null 2>&1; then
+        curl -Ss "${URL}" -o "${MAIN_SCRIPT}" && chmod +x "${MAIN_SCRIPT}" && bash "${MAIN_SCRIPT}"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -q "${URL}" -O "${MAIN_SCRIPT}" && chmod +x "${MAIN_SCRIPT}" && bash "${MAIN_SCRIPT}"
+    else
+        echo -e "\e[91mError:\e[0m \e[93mcurl\e[0m \e[96mor \e[93mwget\e[0m \e[96mis not installed or not found in PATH.\e[0m"
+        exit 1
+    fi
+}
+
+# Call the function to download and execute the main script
+download_and_execute_fastcgi_ops_root
