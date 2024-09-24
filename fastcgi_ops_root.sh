@@ -57,7 +57,7 @@
 
 # NOTE-2
 # ---------
-# Please read carefully the comments between at line 281-300 that about granting
+# Please read carefully the comments between at line 281-302 that about granting
 # specific sudo permissions to the PHP-FPM process owners to manage 'npp-wordpress'
 # systemd service directly on WP admin dashboard NPP plugin settings page.
 
@@ -281,7 +281,7 @@ find_create_includedir() {
 # Automate the process of granting specific sudo permissions to the PHP-FPM
 # process owners on a system. These permissions specifically authorize
 # PHP process owners to execute systemctl commands (restart, is-active)
-# for NPP plugin systemd service 'npp-wordpress'.
+#  for NPP plugin systemd service 'npp-wordpress'. Also for (nginx -T) command.
 # By granting these permissions, the goal is to allow the 'npp-wordpress'
 # systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
@@ -298,14 +298,23 @@ find_create_includedir() {
 # 'inotifywait/setfacl' operations and permission issues. In such situations,
 # NPP users can resolve this problem by restarting 'npp-wordpress' from the
 # WP admin dashboard.
+# By granting (nginx -T) command permission to PHP-FPM-USER we are able to
+# force create NGINX CACHE PATH by PHP-PROCESS-OWNER
 grant_sudo_perm_systemctl_for_php_process_owner() {
   # Try to get/create the includedir first
   if find_create_includedir; then
     # Check if we have already implemented sudo privileges
     if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
       SYSTEMCTL_PATH=$(type -P systemctl)
+      NGINX_PATH=$(type -P nginx)
       for user in "${!fcgi[@]}"; do
-        PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
+        if [[ -n "$NGINX_PATH" ]]; then
+	  # If nginx path is found, add 'nginx -T' to the permissions
+	  PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
+        else
+	  # If nginx path is not found, create permissions without nginx
+          PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
+        fi
         echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
       done
       chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
