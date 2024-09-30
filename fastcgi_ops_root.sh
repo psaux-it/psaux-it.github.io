@@ -302,30 +302,32 @@ find_create_includedir() {
 # By granting (nginx -T) command permission to PHP-FPM-USER we are able to
 # force create NGINX CACHE PATH by PHP-PROCESS-OWNER
 grant_sudo_perm_systemctl_for_php_process_owner() {
+  SYSTEMCTL_PATH=$(type -P systemctl)
+  NGINX_PATH=$(type -P nginx)
+
   # Try to get/create the includedir first
   if find_create_includedir; then
     # Check if we have already implemented sudo privileges
     if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
-      SYSTEMCTL_PATH=$(type -P systemctl)
-      NGINX_PATH=$(type -P nginx)
       # Check if the fcgi array is not empty
       if (( ${#fcgi[@]} != 0 )); then
         for user in "${!fcgi[@]}"; do
-          if [[ -n "$NGINX_PATH" ]]; then
-	    # If nginx path is found, add 'nginx -T' to the permissions
-	    PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
-          else
-	    # If nginx path is not found, create permissions without nginx
-            PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
-          fi
-	  # Prevent duplicate entries to keep sudoers clean
-	  if ! grep -Fxq "${PERMISSIONS}" "${includedir_path}/${NPP_SUDOERS}"; then
-            echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
-          else
-            return 2  
-          fi
+          PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
+          echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || return 1
         done
         chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
+      else
+        return 1
+      fi
+    else
+      # Check sudo perm already granted
+      if (( ${#fcgi[@]} != 0 )); then
+        for user in "${!fcgi[@]}"; do
+          PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
+          if grep -Fxq "${PERMISSIONS}" "${includedir_path}/${NPP_SUDOERS}"; then
+            return 2
+          fi
+        done
       else
         return 1
       fi
