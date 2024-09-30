@@ -121,6 +121,7 @@ required_commands=(
   "tune2fs"
   "setfacl"
   "systemctl"
+  "stat"
 )
 
 # Check if required commands are available
@@ -513,6 +514,43 @@ detect_nginx_conf() {
     echo ""
     exit 1
   fi
+}
+
+# Function to get the Nginx config path and try to apply chmod o+r
+# NPP Wordpress plugin needs read permission on 'nginx.conf' and vhosts
+# to parse necessarry data.
+apply_read_permission_to_nginx_files() {
+    # Get the Nginx config path
+    detect_nginx_conf
+
+    # Extract the directory path from the config file location
+    nginx_conf_dir=$(dirname "${NGINX_CONF}")
+
+    # Define directories to target, dynamically based on the nginx.conf location
+    local TARGET_DIRS=(
+        "${nginx_conf_dir}/conf.d"
+        "${nginx_conf_dir}/sites-available"
+    )
+
+    # Loop through each target directory
+    for dir in "${TARGET_DIRS[@]}"; do
+        if [[ -d "${dir}" ]]; then
+            # Loop through all files in the directory
+            find "${dir}" -type f -print0 | while IFS= read -r -d '' file; do
+                # Get the file's permission in octal format
+                file_permissions=$(stat -c "%a" "${file}")
+
+                # Extract the "others" permission
+                others_permission=${file_permissions: -1}
+
+                # Check if the "others" permission does not include read permission (4)
+                if (( others_permission & 4 == 0 )); then
+                    # Apply the chmod to the file if others don't have read permission
+                    chmod o+r "${file}"
+                fi
+            done
+        fi
+    done
 }
 
 # Function to extract FastCGI cache paths from NGINX configuration files
