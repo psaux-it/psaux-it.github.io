@@ -308,17 +308,27 @@ grant_sudo_perm_systemctl_for_php_process_owner() {
     if ! [[ -f "${includedir_path}/${NPP_SUDOERS}" ]]; then
       SYSTEMCTL_PATH=$(type -P systemctl)
       NGINX_PATH=$(type -P nginx)
-      for user in "${!fcgi[@]}"; do
-        if [[ -n "$NGINX_PATH" ]]; then
-	  # If nginx path is found, add 'nginx -T' to the permissions
-	  PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
-        else
-	  # If nginx path is not found, create permissions without nginx
-          PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
-        fi
-        echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
-      done
-      chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
+      # Check if the fcgi array is not empty
+      if (( ${#fcgi[@]} != 0 )); then
+        for user in "${!fcgi[@]}"; do
+          if [[ -n "$NGINX_PATH" ]]; then
+	    # If nginx path is found, add 'nginx -T' to the permissions
+	    PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}, ${NGINX_PATH} -T"
+          else
+	    # If nginx path is not found, create permissions without nginx
+            PERMISSIONS="${user} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} restart ${service_file_new##*/}, ${SYSTEMCTL_PATH} is-active ${service_file_new##*/}"
+          fi
+	  # Prevent duplicate entries to keep sudoers clean
+	  if ! grep -Fxq "${PERMISSIONS}" "${includedir_path}/${NPP_SUDOERS}"; then
+            echo "${PERMISSIONS}" | sudo EDITOR='tee -a' visudo -f "${includedir_path}/${NPP_SUDOERS}" > /dev/null 2>&1 || { echo -e "\e[91mFailed to grant permission for npp-wordpress systemd service to PHP-FPM-USER: ${user}\e[0m"; return 1; }
+          else
+            return 2  
+          fi
+        done
+        chmod 0440 "${includedir_path}/${NPP_SUDOERS}"
+      else
+        return 1
+      fi
     fi
   else
     return 1
@@ -918,12 +928,28 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Check manual setup already completed or not
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
+    apply_read_permission_to_nginx_files
     print_nginx_cache_paths
-    if grant_sudo_perm_systemctl_for_php_process_owner; then
-      echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
+
+    grant_sudo_perm_systemctl_for_php_process_owner
+    ret=$?
+
+    # Handle the return codes
+    if [ "${ret}" -eq 0 ]; then
+      # Success: Sudo privileges granted
+      echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users."
       for user in "${!fcgi[@]}"; do
-        echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+        echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m."
       done
+    elif [ "${ret}" -eq 2 ]; then
+      # Already Granted
+      echo -e "\e[94mInfo:\e[0m sudo privileges for systemd service \e[93mnpp-wordpress\e[0m are already granted to PHP-FPM users."
+      for user in "${!fcgi[@]}"; do
+        echo -e "Website User: \e[93m${user}\e[0m already has passwordless sudo access to manage the systemd service \e[93mnpp-wordpress\e[0m."
+      done
+    else
+      # Error: Handle unexpected return codes
+      echo -e "\e[91mError:\e[0m Failed to grant sudo privileges for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users."
     fi
     echo ""
   fi
@@ -963,12 +989,28 @@ else
     read -rp $'\e[96mDo you want to continue with the auto configuration? This may takes a while.. \e[92m[Y/n]: \e[0m' confirm
     if [[ ${confirm} =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
+      apply_read_permission_to_nginx_files
       print_nginx_cache_paths
-      if grant_sudo_perm_systemctl_for_php_process_owner; then
-        echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users"
+
+      grant_sudo_perm_systemctl_for_php_process_owner
+      ret=$?
+
+      # Handle the return codes
+      if [ "${ret}" -eq 0 ]; then
+        # Success: Sudo privileges granted
+        echo -e "\e[92mSuccess:\e[0m sudo privileges granted for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users."
         for user in "${!fcgi[@]}"; do
-          echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m"
+          echo -e "Website User: \e[93m${user}\e[0m is a passwordless sudoer to manage the systemd service \e[93mnpp-wordpress\e[0m."
         done
+      elif [ "${ret}" -eq 2 ]; then
+        # Already Granted
+        echo -e "\e[94mInfo:\e[0m sudo privileges for systemd service \e[93mnpp-wordpress\e[0m are already granted to PHP-FPM users."
+        for user in "${!fcgi[@]}"; do
+          echo -e "Website User: \e[93m${user}\e[0m already has passwordless sudo access to manage the systemd service \e[93mnpp-wordpress\e[0m."
+        done
+      else
+        # Error: Handle unexpected return codes
+        echo -e "\e[91mError:\e[0m Failed to grant sudo privileges for systemd service \e[93mnpp-wordpress\e[0m to PHP-FPM users."
       fi
       echo ""
     else
