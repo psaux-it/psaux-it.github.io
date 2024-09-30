@@ -132,11 +132,16 @@ for cmd in "${required_commands[@]}"; do
   fi
 done
 
-# Check ACL configured properly
+# Check ACL configured properly for only ext filesystem
+# XFS and Btrfs have ACL support enabled by default
 fs="$(df / | awk 'NR==2 {print $1}')"
-if ! tune2fs -l "${fs}" | grep -q "Default mount options:.*acl"; then
-  echo -e '\e[91mError:\e[0m \e[96mFilesystem not mounted with the acl!\e[0m'
-  exit 1
+fs_type="$(df -T / | awk 'NR==2 {print $2}')"
+
+if [[ "${fs_type}" =~ ^(ext2|ext3|ext4)$ ]]; then
+  if ! tune2fs -l "${fs}" | grep -q "Default mount options:.*acl"; then
+    echo -e '\e[91mError:\e[0m \e[96mFilesystem not mounted with the acl!\e[0m'
+    exit 1
+  fi
 fi
 
 # Discover script path
