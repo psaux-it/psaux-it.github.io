@@ -1086,6 +1086,9 @@ inotify-start() {
 
     for path in "${paths[@]}"; do
       if pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
+        # Give high CPU priority to inotifywait
+        inotifywait_pid=$(pgrep -f "inotifywait.*${path}")
+        [[ -n "${inotifywait_pid}" ]] && renice -20 "${inotifywait_pid}" >/dev/null
         messages+=("All done! Started to listen to Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
         (( instance_count++ ))
       else
