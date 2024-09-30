@@ -24,6 +24,10 @@ MAIN_SCRIPT="fastcgi_ops_root.sh"
 
 # Function to check for curl and wget, and download the main script using the available tool
 download_and_execute_fastcgi_ops_root() {
+    if [[ -f "${MAIN_SCRIPT}" ]]; then
+        rm -f "${MAIN_SCRIPT}"
+    fi
+    
     if command -v curl > /dev/null 2>&1; then
         curl -Ss "${URL}" -o "${MAIN_SCRIPT}" && chmod +x "${MAIN_SCRIPT}" && bash "${MAIN_SCRIPT}"
     elif command -v wget > /dev/null 2>&1; then
