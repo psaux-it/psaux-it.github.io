@@ -1117,7 +1117,8 @@ inotify-start() {
 inotify-stop() {
   # Kill on-going preload process for all websites first
   for load in "${!fcgi[@]}"; do
-    read -r -a PIDS <<< "$(pgrep -a -f "wget.*-q -m -p -E -k -P ${fcgi[$load]}" | grep -v "cpulimit" | awk '{print $1}')"
+    # Update according to NPP v2.0.4
+    read -r -a PIDS <<< "$(pgrep -a -f "wget .*--recursive .*--no-cache .*--delete-after .*-P ${fcgi[$load]}" | grep -v "cpulimit" | awk '{print $1}')"
     if (( "${#PIDS[@]}" )); then
       for pid in "${PIDS[@]}"; do
         if ps -p "${pid}" >/dev/null 2>&1; then
