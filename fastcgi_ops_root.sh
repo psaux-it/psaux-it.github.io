@@ -19,32 +19,41 @@
 # SCRIPT DESCRIPTION:
 # -------------------
 # This script is written for "FastCGI Cache Purge and Preload for Nginx"
-# Wordpress Plugin.
+#
+# NPP - Wordpress Plugin.
 # URL: https://wordpress.org/plugins/fastcgi-cache-purge-and-preload-nginx/
-# This script attempts to automatically match and grant (via setfacl)
-# permissions for PHP-FPM-USER (as known, process owner or website-user)
-# along with their associated Nginx Cache Paths.
-# If it cannot automatically match the PHP-FPM-USER along with their
-# associated Nginx Cache Path, it offers an easy manual setup option
+#
+# This script attempts to automatically match PHP-FPM user (as known,
+# PHP process owner or website-user) along with their associated
+# Nginx Cache Paths first.
+#
+# If cannot automatically match the PHP-FPM-USER along with their
+# associated Nginx Cache Path, script offers an easy manual setup option
 # with the 'manual-configs.nginx' file.
-# Mainly, in case your current web server setup involves two distinct
-# users, WEBSERVER-USER (nginx or www-data) and PHP-FPM-USER, the solution
-# proposed by this script involves combining Linux server side tools
-# 'inotifywait' with 'setfacl' to automatically grant write permissions
-# to the PHP-FPM-USER for the corresponding Nginx Cache Paths (listening
-# cache events), which are matched either automatically or via a manual
-# configuration file.
-# This approach is an alternative to external Nginx modules like Cache
-# Purge module for purge operations.
-# This script creates an npp-wordpress systemd service to manage grant
-# permission for purge and preload actions.
+#
+# Also, this script automates the management of Nginx Cache Paths in an environment
+# with two distinct user roles: the web server user (nginx or www-data)
+# and the PHP-FPM user. It utilizes `bindfs` to create a FUSE mount of the
+# original Nginx Cache Paths, which allows the PHP-FPM user to write to these
+# directories with tailored permissions. This approach effectively resolves
+# permission conflicts, ensuring secure and efficient access to the cache
+# while maintaining the integrity of the ORIGINAL NGINX Cache Paths.
 
+# This script creates an 'npp-wordpress' systemd service.
 # After completing the setup (whether automatic or manual), you can manage
 # the automatically created 'npp-wordpress' systemd service on the WP admin
-# dashboard NPP plugin settings page.
-# This allows you to start and stop inotifywait/setfacl operations (via
-# systemd) for Nginx Cache Path directly from the front-end for associated
-# PHP-FPM-USER.
+# dashboard NPP plugin STATUS tab.
+
+# By the way:
+# NPP users have the flexibility to manage FUSE mount and unmount operations
+# for the original Nginx Cache Path directly from the WP admin dashboard.
+# This flexibility ensures that the PHP-FPM process owner has the necessary
+# permissions, effectively preventing unexpected permission issues and
+# maintaining consistent cache stability.
+#
+# **Issue Resolution: Quickly resolve unexpected permission issues by remounting.
+# **Improved Cache Stability: Regular management maintains cache consistency and accessibility.
+# **Ease of Use: User-friendly integration in the WP admin dashboard for effective management.
 
 # NOTE-1
 # ---------
@@ -57,9 +66,9 @@
 
 # NOTE-2
 # ---------
-# Please read carefully the comments between at line 281-302 that about granting
+# Please read carefully the comments between at line 342-362 that about granting
 # specific sudo permissions to the PHP-FPM process owners to manage 'npp-wordpress'
-# systemd service directly on WP admin dashboard NPP plugin settings page.
+# systemd service directly on WP admin dashboard NPP plugin STATUS tab.
 
 # NOTE-3
 # ---------
@@ -99,15 +108,15 @@ help() {
 
   echo -e "\n${m_tab}${cyan}# Wordpress FastCGI Cache Purge&Preload Help"
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------"
-  echo -e "${m_tab}#${m_tab}--wp-inotify-start   need root! start listening events(cache folder), set ACL permission(PHP-FPM USER)"
-  echo -e "${m_tab}#${m_tab}--wp-inotify-stop    need root! stop  listening events(cache folder), unset ACL permission(PHP-FPM USER)"
+  echo -e "${m_tab}#${m_tab}--wp-fuse-mount   need root! mount FUSE Nginx Cache Path, with altered permissions for associated PHP-FPM USER"
+  echo -e "${m_tab}#${m_tab}--wp-fuse-umount  need root! umount FUSE Nginx Cache Path, with altered permissions for associated PHP-FPM USER"
   echo -e "${m_tab}# ---------------------------------------------------------------------------------------------------${reset}\n"
 }
 
 # Check if script is executed as root
 if [[ $EUID -ne 0 ]]; then
-    echo -e "\e[91mThis script must be run as root\e[0m"
-    exit 1
+  echo -e "\e[91mThis script must be run as root\e[0m"
+  exit 1
 fi
 
 # Required commands
@@ -117,9 +126,8 @@ required_commands=(
   "pgrep"
   "basename"
   "nginx"
-  "inotifywait"
-  "tune2fs"
-  "setfacl"
+  "bindfs"
+  "curl"
   "systemctl"
   "stat"
 )
@@ -131,18 +139,6 @@ for cmd in "${required_commands[@]}"; do
     exit 1
   fi
 done
-
-# Check ACL configured properly for only ext filesystem
-# XFS and Btrfs have ACL support enabled by default
-fs="$(df / | awk 'NR==2 {print $1}')"
-fs_type="$(df -T / | awk 'NR==2 {print $2}')"
-
-if [[ "${fs_type}" =~ ^(ext2|ext3|ext4)$ ]]; then
-  if ! tune2fs -l "${fs}" | grep -q "Default mount options:.*acl"; then
-    echo -e '\e[91mError:\e[0m \e[96mFilesystem not mounted with the acl!\e[0m'
-    exit 1
-  fi
-fi
 
 # Discover script path
 this_script_full_path=$(realpath "${BASH_SOURCE[0]}")
@@ -172,11 +168,70 @@ BACKUP_FILE="/etc/sudoers.bak"
 # Define NPP Wordpress sudoers config file
 NPP_SUDOERS="npp_wordpress"
 
+# Repo URL's for version checking
+libfuse_repo_url="https://api.github.com/repos/libfuse/libfuse/releases/latest"
+bindfs_repo_url="https://api.github.com/repos/mpartel/bindfs/git/refs/tags"
+
 # Define the @includedir path if it does not already exist.
 # We use a path other than "/etc/sudoers.d" to avoid overriding the user's current setup.
 # Users may avoid using "/etc/sudoers.d" specifically because it is a catch-all directory
 # where system package managers can place sudoers file rules during package installation.
 CUSTOM_INCLUDEDIR_PATH="/etc/sudoers.npp"
+
+# Function to check bindfs version
+check_bindfs_version() {
+  local latest_version
+  local installed_version
+
+  if command -v bindfs &> /dev/null; then
+    installed_version=$(bindfs --version | head -n1 | awk '{print $2}')
+    latest_version=$(curl -s "${bindfs_repo_url}" | grep -oP '"ref": "refs/tags/\K[0-9]+(\.[0-9]+)*' | sort -V | tail -n1)
+
+    if [[ -n "${latest_version}" && "${latest_version}" =~ ^[0-9]+(\.[0-9]+)*$ && -n "${installed_version}" && "${installed_version}" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+      if [[ "${installed_version}" != "${latest_version}" ]]; then
+        echo -e "\e[94mInfo:\e[0m A newer version of \e[93mbindfs\e[0m is available: \e[93m${latest_version}\e[0m. It's recommended to update for improved security and performance."
+      else
+        echo -e "\e[92mInfo:\e[0m Current \e[93mbindfs\e[0m version is up to date: \e[93m${installed_version}\e[0m"
+      fi
+    fi
+  fi
+}
+
+# Function to check libfuse version
+check_libfuse_version() {
+  # Get the latest version info
+  local latest_version
+  local installed_version
+
+  # Get latest version info
+  latest_version=$(curl -s "${libfuse_repo_url}" | grep '"tag_name"' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' | sed 's/fuse-//')
+
+  if [[ -n "${latest_version}" ]] && [[ "${latest_version}" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+    # Check for FUSE 3
+    if command -v fusermount3 &> /dev/null; then
+      installed_version=$(fusermount3 -V | grep -oP 'version:\s*\K[0-9.]+')
+
+      if [[ -n "${installed_version}" ]] && [[ "${installed_version}" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        if [[ "${installed_version}" != "${latest_version}" ]]; then
+          echo -e "\e[94mInfo:\e[0m Newer version of \e[93mlibfuse\e[0m available \e[93m${latest_version}\e[0m. It's recommended to update for improved security and performance."
+        else
+          echo -e "\e[92mInfo:\e[0m Current \e[93mlibfuse\e[0m version is up to date: \e[93m${installed_version}\e[0m"
+        fi
+      fi
+    # Check for FUSE 2
+    elif command -v fusermount &> /dev/null; then
+      installed_version=$(fusermount -V | grep -oP 'version:\s*\K[0-9.]+')
+
+      if [[ -n "${installed_version}" ]] && [[ "${installed_version}" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        if [[ "${installed_version}" != "${latest_version}" ]]; then
+          echo -e "\e[94mInfo:\e[0m A newer version of \e[93mlibfuse\e[0m is available: \e[93m${latest_version}\e[0m. It's recommended to update for improved security and performance."
+        else
+          echo -e "\e[92mInfo:\e[0m Current \e[93mlibfuse\e[0m version is up to date: \e[93m${installed_version}\e[0m"
+        fi
+      fi
+    fi
+  fi
+}
 
 # Check for sudo and visudo
 check_sudo_and_visudo() {
@@ -286,26 +341,25 @@ find_create_includedir() {
 
 # Automate the process of granting specific sudo permissions to the PHP-FPM
 # process owners on a system. These permissions specifically authorize
-# PHP process owners to execute systemctl commands (restart, is-active)
-#  for NPP plugin systemd service 'npp-wordpress'. Also for (nginx -T) command.
+# PHP process owners to execute systemctl commands (restart)
+# for NPP plugin systemd service 'npp-wordpress'.
 # By granting these permissions, the goal is to allow the 'npp-wordpress'
 # systemd service to be controlled directly from the WordPress admin
 # dashboard, enhancing operational flexibility and automation.
-# After successful integration, NPP users will be able to manage (restart,
-# is-active) the 'npp-wordpress' systemd service on WP admin dashboard
-# NPP plugin settings page.
+# After successful integration, NPP users will be able to manage (restart)
+# the 'npp-wordpress' systemd service on WP admin dashboard NPP plugin STATUS tab.
 # This implementation is not strictly necessary for functional cache
 # purge & preload actions and does not break the default setup process,
 # but it is important to have this ability to control the NPP plugin systemd
 # service 'npp-wordpress' on WP admin dashboard to deal with premission issues
 # directly from front-end.
-# Because 'inotifywait' encounters issues during rapid cache events in the
-# Nginx Cache folder, during cache preloading, which can lead to failures in
-# 'inotifywait/setfacl' operations and permission issues. In such situations,
-# NPP users can resolve this problem by restarting 'npp-wordpress' from the
-# WP admin dashboard.
-# By granting (nginx -T) command permission to PHP-FPM-USER we are able to
-# force create NGINX CACHE PATH by PHP-PROCESS-OWNER
+# By the way NPP users can fully control FUSE FS mount/umount operations
+# for the original Nginx Cache Path with altered permissions for the
+# PHP-FPM process owner to address unexpected permission issues
+# and maintain stable cache consistency.
+# By granting (nginx -T) command sudo permission to PHP-FPM-USER also we are able to
+# automatically force create NGINX CACHE PATH by PHP process owner to prevent
+# the NGINX Cache Path not found errors.
 grant_sudo_perm_systemctl_for_php_process_owner() {
   SYSTEMCTL_PATH=$(type -P systemctl)
   NGINX_PATH=$(type -P nginx)
@@ -466,7 +520,7 @@ if [[ -t 0 ]]; then
       # Check if the service restarted successfully
       if systemctl is-active --quiet "${service_file_new##*/}"; then
         echo ""
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mnginx.conf\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
+        echo -e "\e[92mSuccess:\e[0m The Systemd service \e[93mnpp-wordpress\e[0m has been restarted. Newly added Nginx Cache paths in \e[93mnginx.conf\e[0m are now mounted via \e[93mbindfs\e[0m with the '-npp' suffix and altered permissions."
         print_nginx_cache_paths
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
@@ -484,7 +538,7 @@ if [[ -t 0 ]]; then
       # Check if the service restarted successfully
       if systemctl is-active --quiet "${service_file_new##*/}"; then
         echo ""
-        echo -e "\e[92mSuccess:\e[0m Systemd service \e[93mnpp-wordpress\e[0m is re-started. If there are newly added Nginx Cache paths to \e[93mmanual-configs.nginx\e[0m, they should now be listening via \e[93minotifywait/setfacl\e[0m."
+        echo -e "\e[92mSuccess:\e[0m The Systemd service \e[93mnpp-wordpress\e[0m has been restarted. Newly added Nginx Cache paths in \e[93mnginx.conf\e[0m are now mounted via \e[93mbindfs\e[0m with the '-npp' suffix and altered permissions."
         print_nginx_cache_paths
       else
         echo -e "\e[91mError:\e[0m Systemd service \e[93mnpp-wordpress\e[0m failed to restart."
@@ -509,12 +563,14 @@ detect_nginx_conf() {
     "/etc/nginx/nginx.conf"
     "/usr/local/nginx/conf/nginx.conf"
   )
+
   for path in "${DEFAULT_NGINX_CONF_PATHS[@]}"; do
     if [[ -f "${path}" ]]; then
       NGINX_CONF="${path}"
       break
     fi
   done
+
   if [[ -z "${NGINX_CONF}" ]]; then
     echo ""
     echo -e "\e[31mError: Nginx configuration file (\e[33mnginx.conf\e[31m) not found in default paths.\e[0m"
@@ -537,37 +593,37 @@ detect_nginx_conf() {
 # NPP Wordpress plugin needs read permission on 'nginx.conf' and vhosts
 # to parse necessarry data.
 apply_read_permission_to_nginx_files() {
-    # Get the Nginx config path
-    detect_nginx_conf
+  # Get the Nginx config path
+  detect_nginx_conf
 
-    # Extract the directory path from the config file location
-    nginx_conf_dir=$(dirname "${NGINX_CONF}")
+  # Extract the directory path from the config file location
+  nginx_conf_dir=$(dirname "${NGINX_CONF}")
 
-    # Define directories to target, dynamically based on the nginx.conf location
-    local TARGET_DIRS=(
-        "${nginx_conf_dir}/conf.d"
-        "${nginx_conf_dir}/sites-available"
-    )
+  # Define directories to target, dynamically based on the nginx.conf location
+  local TARGET_DIRS=(
+    "${nginx_conf_dir}/conf.d"
+    "${nginx_conf_dir}/sites-available"
+  )
 
-    # Loop through each target directory
-    for dir in "${TARGET_DIRS[@]}"; do
-        if [[ -d "${dir}" ]]; then
-            # Loop through all files in the directory
-            find "${dir}" -type f -print0 | while IFS= read -r -d '' file; do
-                # Get the file's permission in octal format
-                file_permissions=$(stat -c "%a" "${file}")
+  # Loop through each target directory
+  for dir in "${TARGET_DIRS[@]}"; do
+    if [[ -d "${dir}" ]]; then
+      # Loop through all files in the directory
+      find "${dir}" -type f -print0 | while IFS= read -r -d '' file; do
+        # Get the file's permission in octal format
+        file_permissions=$(stat -c "%a" "${file}")
 
-                # Extract the "others" permission
-                others_permission=${file_permissions: -1}
+        # Extract the "others" permission
+        others_permission=${file_permissions: -1}
 
-                # Check if the "others" permission does not include read permission (4)
-                if (( others_permission & 4 == 0 )); then
-                    # Apply the chmod to the file if others don't have read permission
-                    chmod o+r "${file}"
-                fi
-            done
+        # Check if the "others" permission does not include read permission (4)
+        if (( others_permission & 4 == 0 )); then
+          # Apply the chmod to the file if others don't have read permission
+          chmod o+r "${file}"
         fi
-    done
+      done
+    fi
+  done
 }
 
 # Function to extract FastCGI cache paths from NGINX configuration files
@@ -708,6 +764,9 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   cache_path_not_exist_error=""
   user_not_exist_error=""
 
+  # Force create NGINX Cache Paths
+  nginx -T >/dev/null 2>&1
+
   # Loop through FASTCGI_CACHE_PATHS to find matches for each PHP_FPM_USER with validation
   for PHP_FPM_USER in "${PHP_FPM_USERS[@]}"; do
     # Skip empty elements in PHP_FPM_USERS array
@@ -722,7 +781,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
       echo -e "\e[91mError: \e[0m\e[96mExcluded: PHP-FPM-USER: ${PHP_FPM_USER} is the same as the WEBSERVER-USER, indicating that it already has read/write permissions for the Nginx Cache Path.\e[0m"
       continue
     fi
-    
+
     # Check if the user exists
     if ! id "${PHP_FPM_USER}" &>/dev/null; then
       error_message="\033[33mWarning: \e[0m\e[96mExcluded: User: ${PHP_FPM_USER} does not exist. Please ensure the user exists.\e[0m\n"
@@ -739,7 +798,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
       if [[ -z "${FASTCGI_CACHE_PATH}" ]]; then
         continue
       fi
-      
+
       # Check if the Nginx Cache directory exists
       if [[ ! -d "${FASTCGI_CACHE_PATH}" ]]; then
         error_message="\033[33mWarning: \e[0m\e[96mExcluded: Nginx Cache Path: ${FASTCGI_CACHE_PATH} does not exist.\e[0m\n"
@@ -797,15 +856,10 @@ check_and_start_systemd_service() {
 	Requires=nginx.service
 
 	[Service]
-	KillSignal=SIGKILL
-	TimeoutStopSec=5
 	Type=simple
+	ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-fuse-mount
+	ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-fuse-umount
 	RemainAfterExit=yes
-	User=root
-	Group=root
-	ProtectSystem=full
-	ExecStart=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-start
-	ExecStop=/bin/bash ${this_script_path}/${this_script_name} --wp-inotify-stop
 
 	[Install]
 	WantedBy=multi-user.target
@@ -936,6 +990,8 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   if ! [[ -f "${this_script_path}/manual_setup_on" ]]; then
     check_and_start_systemd_service && touch "${this_script_path}/manual_setup_on"
     apply_read_permission_to_nginx_files
+    check_bindfs_version
+    check_libfuse_version
     print_nginx_cache_paths
 
     grant_sudo_perm_systemctl_for_php_process_owner
@@ -997,6 +1053,8 @@ else
     if [[ ${confirm} =~ ^[Yy]$ ]]; then
       check_and_start_systemd_service && touch "${this_script_path}/auto_setup_on"
       apply_read_permission_to_nginx_files
+      check_bindfs_version
+      check_libfuse_version
       print_nginx_cache_paths
 
       grant_sudo_perm_systemctl_for_php_process_owner
@@ -1026,10 +1084,12 @@ else
   fi
 fi
 
-# Start to listen Nginx Cache Paths events (inotifywait) to
-# give read/write permission to associated PHP-FPM-USERs (setfacl)
-inotify-start() {
-  # Count total instances (PHP-FPM-USR_Nginx Cache Path pairs)
+# FUSE mount operations for the original Nginx Cache Path
+fuse-mount() {
+  check_bindfs_version
+  check_libfuse_version
+
+  # Count total instances (PHP-FPM-USER | Nginx Cache Path)
   count_instances() {
     local count=0
     for user in "${!fcgi[@]}"; do
@@ -1039,45 +1099,32 @@ inotify-start() {
     echo $count
   }
 
-  # Check any "PHP-FPM-USER | Nginx Cache Path" instance found, if not exit before validation
+  # Check if any "PHP-FPM-USER | Nginx Cache Path" instances are found; if not, exit
   instance_count=$(count_instances)
   if (( instance_count == 0 )); then
     # If no instance found, exit
-    echo "There are no instances configured. Please check your configuration."
+    echo "There are no (PHP-FPM-USERS | Nginx Cache Path) instances configured. Please check your configuration."
     exit 1
   fi
 
-  # Let's start "PHP-FPM-USER | Nginx Cache Path" instances;
+  # Start FUSE mounts for Original Nginx Cache Paths associated with each PHP-FPM-USER
+  # with altered permissions
   for user in "${!fcgi[@]}"; do
     IFS=':' read -r -a paths <<< "${fcgi[$user]}"
 
     for path in "${paths[@]}"; do
-      if ! pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
-        # Trigger one time recursive
-        setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
-
-        # Start inotifywait/setfacl
-        while read -r directory event file_folder; do
-          # While this loop is working, if fastcgi cache path
-          # is deleted manually by the user that causes strange
-          # behaviors, kill it
-          if [[ ! -d "${path}" ]]; then
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            echo "Nginx Cache folder ${path} destroyed manually, inotifywait/setfacl process for PHP-FPM-USER: ${user} is killed!"
-            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            break
-          fi
-
-          # Set ACLs for files and folders created and modified in cache directory
-          setfacl -R -m u:"${user}":rwX,g:"${user}":rwX "${path}"/
-        done < <(inotifywait -m -q -e modify,create -r "${path}") >/dev/null 2>&1 &
+      if ! mount | grep "${path}" >/dev/null 2>&1; then
+        # Attempt to mount using bindfs
+        [ ! -d "${path}-npp" ] && mkdir "${path}-npp"
+        bindfs -u "${user}" -g "${user}" --perms=u=rwx:g=rx:o= "${path}" "${path}"-npp
       else
-        echo -e "\e[93mWarning: \e[96mNginx FastCGI cache directory: (\e[93m${path}\e[96m) is already listening, EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
+        mount_point=$(mount | grep "${path}" | awk -F ' on | type ' '{print $2}')
+        echo -e "\e[93mWarning: \e[96mThe original Nginx FastCGI Cache Directory (\e[93m${path}\e[96m) is already mounted on FUSE at: (\e[93m${mount_point}\e[96m). It is EXCLUDED for PHP-FPM-USER: (\e[93m${user}\e[96m)\e[0m"
       fi
     done
   done
 
-  # Check and print active "PHP-FPM-USER | Nginx Cache Path" instance status
+  # Collect status messages for each instance
   declare -a messages
   instance_count=0
 
@@ -1085,19 +1132,17 @@ inotify-start() {
     IFS=':' read -r -a paths <<< "${fcgi[$user]}"
 
     for path in "${paths[@]}"; do
-      if pgrep -f "inotifywait.*${path}" >/dev/null 2>&1; then
-        # Give high CPU priority to inotifywait
-        inotifywait_pid=$(pgrep -f "inotifywait.*${path}")
-        [[ -n "${inotifywait_pid}" ]] && renice -20 "${inotifywait_pid}" >/dev/null
-        messages+=("All done! Started to listen to Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
+      if mount | grep -q "${path}" >/dev/null 2>&1; then
+        mount_point=$(mount | grep "${path}" | awk -F ' on | type ' '{print $2}')
+        messages+=("All done! Nginx FastCGI Cache Path: (${path}) mounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user}), with altered permissions.")
         (( instance_count++ ))
       else
-        messages+=("Unknown error occurred during starting to listen Nginx FastCGI Cache Path: (${path}) events to set up ACLs for PHP-FPM-USER: (${user})")
+        messages+=("CANNOT mount the Nginx FastCGI Cache Path: (${path}) on FUSE at: (${path}-npp) for PHP-FPM-USER: (${user}), with altered permissions.")
       fi
     done
   done
 
-  # Check instance statuses
+  # Check instance statuses and output messages
   if (( instance_count == 0 )); then
     echo "All instances are already listening, excluded, or failed to start."
     # Output all error messages collected
@@ -1112,9 +1157,8 @@ inotify-start() {
   fi
 }
 
-# stop on-going preload actions
-# the rest of the stuff (killing child processes) will handled by systemd via stop command
-inotify-stop() {
+# FUSE umount operations for the original Nginx Cache Path
+fuse-umount() {
   # Kill on-going preload process for all websites first
   for load in "${!fcgi[@]}"; do
     # Update according to NPP v2.0.4
@@ -1131,12 +1175,29 @@ inotify-stop() {
       echo "No cache preload process found for website ${load}"
     fi
   done
+
+  # Umount FUSE Nginx Cache Paths
+  for user in "${!fcgi[@]}"; do
+    IFS=':' read -r -a paths <<< "${fcgi[$user]}"
+    for path in "${paths[@]}"; do
+      if mount | grep "${path}" >/dev/null 2>&1; then
+        mount_point=$(mount | grep "${path}" | awk -F ' on | type ' '{print $2}')
+        umount "${mount_point}" >/dev/null 2>&1
+        # Check umount completed
+        if ! mount | grep -q "${path}" >/dev/null 2>&1; then
+          echo "Nginx FastCGI Cache Path: (${path}) umounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user})"
+        else
+          echo "Nginx FastCGI Cache Path: (${path}) CANNOT umounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user})"
+        fi
+      fi
+    done
+  done
 }
 
 # set script arguments
 case "$1" in
-  --wp-inotify-start ) inotify-start ;;
-  --wp-inotify-stop  ) inotify-stop  ;;
+  --wp-fuse-mount ) fuse-mount ;;
+  --wp-fuse-umount  ) fuse-umount  ;;
   *                  )
   if [ $# -gt 1 ]; then
     help
