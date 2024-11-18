@@ -1183,6 +1183,7 @@ fuse-umount() {
       if mount | grep "${path}" >/dev/null 2>&1; then
         mount_point=$(mount | grep "${path}" | awk -F ' on | type ' '{print $2}')
         umount "${mount_point}" >/dev/null 2>&1
+	rm -r "${mount_point:?}" >/dev/null 2>&1
         # Check umount completed
         if ! mount | grep -q "${path}" >/dev/null 2>&1; then
           echo "Nginx FastCGI Cache Path: (${path}) umounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user})"
