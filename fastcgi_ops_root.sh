@@ -655,10 +655,14 @@ extract_fastcgi_cache_paths() {
 validate_cache_paths() {
   local path_list=("$@")
   local invalid_paths=()
-  local critical_dirs=("/bin" "/boot" "/etc" "/home" "/lib" "/media" "/mnt" "/opt" "/proc" "/root" "/sbin" "/srv" "/sys" "/usr")
+  local critical_dirs=(
+    "/bin" "/boot" "/etc" "/lib" "/lib64" "/media" "/proc" "/root" "/sbin"
+    "/srv" "/sys" "/usr" "/home" "/mnt" "/var/log" "/var/spool" "/libexec"
+    "/run" "/var/run"
+  )
 
   for path in "${path_list[@]}"; do
-    # Check if path is just '/'
+    # Check if path is root
     if [[ "${path}" == "/" ]]; then
       invalid_paths+=("${path}")
       continue
