@@ -655,13 +655,26 @@ extract_fastcgi_cache_paths() {
 validate_cache_paths() {
   local path_list=("$@")
   local invalid_paths=()
+
+  // Not allowed directories
   local critical_dirs=(
     "/bin" "/boot" "/etc" "/lib" "/lib64" "/media" "/proc" "/root" "/sbin"
     "/srv" "/sys" "/usr" "/home" "/mnt" "/var/log" "/var/spool" "/libexec"
     "/run" "/var/run"
   )
 
+  # Allowed directories that must have at least one level deeper.
+  local allowed_deeper_dirs=(
+    "/dev" "/var" "/tmp" "/opt"
+  )
+
   for path in "${path_list[@]}"; do
+    # Check if path is empty
+    if [[ -z "${path}" ]]; then
+      invalid_paths+=("null")
+      continue
+    fi
+
     # Check if path is root
     if [[ "${path}" == "/" ]]; then
       invalid_paths+=("${path}")
@@ -670,7 +683,15 @@ validate_cache_paths() {
 
     # Check Nginx cache path is a critical directory or starts with any critical directory
     for critical in "${critical_dirs[@]}"; do
-      if [[ "${path}" == "${critical}" || "${path}" == "${critical}/"* ]]; then
+      if [[ "${path}" == "${critical}" || "${path}" == "${critical}/" || "${path}" == "${critical}/"* ]]; then
+        invalid_paths+=("${path}")
+        break
+      fi
+    done
+
+    # Check if the path is under an allowed directory but is shallow (invalid if not deeper)
+    for allowed in "${allowed_deeper_dirs[@]}"; do
+      if [[ "${path}" == "${allowed}" || "${path}" == "${allowed}/" ]]; then
         invalid_paths+=("${path}")
         break
       fi
@@ -815,7 +836,7 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
       # Validate each FastCGI cache path
       if ! validate_cache_paths "${FASTCGI_CACHE_PATH}"; then
         error_message="\033[33mWarning:\033[0m \033[0;36mThe automatically detected following Nginx Cache Paths are critical system directories or root directory and cannot be used:\033[0m\n"
-        error_message+="\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m\n"
+        error_message+="\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Please use directories '/dev' | '/var' | '/tmp' | '/opt' must have at least one level deeper.\033[0m\n"
         error_message+="\033[0;31mExcluded forbidden Nginx Cache Path: \033[1;33m${FASTCGI_CACHE_PATH}\033[0m\n"
         if [[ ! "${critical_path_error}" =~ "${error_message}" ]]; then
           critical_path_error+="${error_message}"
@@ -940,7 +961,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
 
     # Validate the Nginx FastCGI cache path
     if ! validate_cache_paths "${cache_path}"; then
-      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Best practice using directories like '/dev/shm/' or '/var/cache/'\033[0m"
+      echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Please use directories '/dev' | '/var' | '/tmp' | '/opt' must have at least one level deeper.\033[0m"
       echo -e "\e[91mError: \e[0m\e[96mExcluded: \033[0;31mForbidden Nginx Cache Path: \033[1;33m${cache_path}\033[0m"
       continue
     fi
