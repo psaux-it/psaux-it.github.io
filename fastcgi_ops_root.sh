@@ -656,7 +656,7 @@ validate_cache_paths() {
   local path_list=("$@")
   local invalid_paths=()
 
-  // Not allowed directories
+  # Not allowed directories
   local critical_dirs=(
     "/bin" "/boot" "/etc" "/lib" "/lib64" "/media" "/proc" "/root" "/sbin"
     "/srv" "/sys" "/usr" "/home" "/mnt" "/var/log" "/var/spool" "/libexec"
