@@ -1,6 +1,6 @@
 # PSAUXIT Automation Helper Scripts
 
-Welcome to the **PSAUXIT Automation Helper Scripts** repository. This repository contains a collection of shell scripts designed to streamline various automations for open-source projects or main PSAUXIT applications.
+Welcome to the **PSAUXIT Automation Helper Scripts** repository. This repository contains a collection of scripts designed to streamline various automations for open-source projects or main PSAUXIT applications.
 
 ## Purpose
 
