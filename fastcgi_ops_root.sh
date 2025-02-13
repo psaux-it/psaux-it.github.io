@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Designed for  All-in-One Monolithic Server arces (PHP,NGINX,WP,SQL all in one server)
+# For dockerized environment check --> https://github.com/psaux-it/wordpress-nginx-cache-docker
+
 # Copyright (C) 2024 Hasan CALISIR <hasan.calisir@psauxit.com>
 # Distributed under the GNU General Public License, version 2.0.
 #
@@ -130,6 +133,7 @@ required_commands=(
   "curl"
   "systemctl"
   "stat"
+  "php"
 )
 
 # Check if required commands are available
@@ -139,6 +143,18 @@ for cmd in "${required_commands[@]}"; do
     exit 1
   fi
 done
+
+# Check if PHP is properly installed and functional
+if ! php -v >/dev/null 2>&1; then
+  echo -e "\e[91mError:\e[0m \e[93mPHP\e[0m is not properly installed or not functioning correctly."
+  exit 1
+fi
+
+# Check if any /etc/php*/ directories exist
+if ! ls /etc/php*/ >/dev/null 2>&1; then
+  echo -e "\e[91mError:\e[0m No PHP configuration directories found in \e[93m/etc/php*/\e[0m."
+  exit 1
+fi
 
 # Discover script path
 this_script_full_path=$(realpath "${BASH_SOURCE[0]}")
