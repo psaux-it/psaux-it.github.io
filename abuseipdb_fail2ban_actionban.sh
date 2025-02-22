@@ -111,9 +111,20 @@ if [[ -z "$1" || -z "$2" || -z "$3" || -z "$4" || -z "$5" ]]; then
     exit 1
 fi
 
-# Ensure the reported IP list file exists
+# Ensure the directory for the reported IP list exists
+REPORTED_IP_DIR=$(dirname "${REPORTED_IP_LIST_FILE}")
+if [[ ! -d "${REPORTED_IP_DIR}" ]]; then
+    mkdir -p "${REPORTED_IP_DIR}" || { log_message "FATAL: Could not create directory ${REPORTED_IP_DIR}"; exit 1; }
+fi
+
+# Ensure the reported IP list file exists and is writable
 if [[ ! -f "${REPORTED_IP_LIST_FILE}" ]]; then
-    touch "${REPORTED_IP_LIST_FILE}"
+    touch "${REPORTED_IP_LIST_FILE}" || { log_message "FATAL: Could not create file ${REPORTED_IP_LIST_FILE}"; exit 1; }
+fi
+
+if [[ ! -w "${REPORTED_IP_LIST_FILE}" ]]; then
+    log_message "FATAL: File ${REPORTED_IP_LIST_FILE} is not writable."
+    exit 1
 fi
 
 # Check runtime dependencies
@@ -127,65 +138,61 @@ if ! command -v jq &>/dev/null; then
     exit 1
 fi
 
-# Function to check if the IP is listed on AbuseIPDB
+# Check if the IP is listed on AbuseIPDB
 check_ip_in_abuseipdb() {
-    local response
-    local http_status
-    local body
-    local exit_code
-    local total_reports
-    local error_detail
+    local response http_status body exit_code total_reports error_detail
+    local delimiter="HTTP_STATUS:"
 
     # Perform the API call and capture both response and HTTP status
-    response=$(curl -s -w "HTTPSTATUS:%{http_code}" -G "https://api.abuseipdb.com/api/v2/check" \
+    response=$(curl -s -w "${delimiter}%{http_code}" -G "https://api.abuseipdb.com/api/v2/check" \
         --data-urlencode "ipAddress=${IP}" \
         -H "Key: ${APIKEY}" \
         -H "Accept: application/json" 2>&1)
 
-    exit_code=$?
-
-    # Extract the HTTP status code
-    http_status=$(echo "${response}" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-
-    # Extract the body
-    body=$(echo "${response}" | sed -e 's/HTTPSTATUS\:.*//g')
-
-    # Check if curl encountered a network or other fatal error
-    if [[ $exit_code -ne 0 ]]; then
-        log_message "Aborting due to curl failure when checking IP. Exit code: ${exit_code}, Response: ${response}"
+    if [[ $? -ne 0 ]]; then
+        log_message "ERROR CHECK: API failure. Response: ${response}"
         exit 1
     fi
+
+    # Separate the HTTP status code from the response body
+    http_status=$(echo "${response}" | tr -d '\n' | sed -e "s/.*${delimiter}//")
+    body=$(echo "${response}" | sed -e "s/${delimiter}[0-9]*//")
 
     # Check if the response body is empty
     if [[ -z "${body}" ]]; then
-        log_message "API response was empty when checking IP."
+        log_message "ERROR CHECK: API response empty."
         exit 1
     fi
 
-    # Validate the JSON response
+    # Validate that the response is valid JSON
     if ! echo "${body}" | jq . >/dev/null 2>&1; then
-        log_message "API response was malformed when checking IP. Response: ${body}"
+        log_message "ERROR CHECK: API response malformed. Response: ${body}"
         exit 1
     fi
 
     # Handle different HTTP status codes
-    if [[ "${http_status}" -ge 200 && "${http_status}" -lt 300 ]]; then
-        # Successful HTTP response; now check for API-level errors
-        if echo "${body}" | jq -e '.errors' >/dev/null 2>&1; then
-            error_detail=$(echo "${body}" | jq -r '.errors[].detail')
-            log_message "API returned errors when checking IP. Detail: ${error_detail}"
+    if [[ "${http_status}" =~ ^[0-9]+$ ]]; then
+        if [[ "${http_status}" -ge 200 && "${http_status}" -lt 300 ]]; then
+            # Successful HTTP response; check for API-level errors
+            if echo "${body}" | jq -e '.errors | length > 0' >/dev/null 2>&1; then
+                error_detail=$(echo "${body}" | jq -r '.errors[].detail')
+                log_message "ERROR CHECK: API returned errors. Detail: ${error_detail}"
+                exit 1
+            fi
+        else
+            # Non-successful HTTP status
+            log_message "ERROR CHECK: API returned ${http_status}. Response: ${body}"
             exit 1
         fi
     else
-        # Non-successful HTTP status codes
-        log_message "API returned HTTP status ${http_status} when checking IP. Response: ${body}"
+        log_message "ERROR CHECK: HTTP status '${http_status}' is not numeric."
         exit 1
     fi
 
     # Extract totalReports
     total_reports=$(echo "${body}" | jq '.data.totalReports')
 
-    # Check the IP listed on AbuseIPDB
+    # Finally, check the IP listed on AbuseIPDB
     if [[ "${total_reports}" -gt 0 ]]; then
         return 0 # IP is reported
     else
@@ -193,7 +200,7 @@ check_ip_in_abuseipdb() {
     fi
 }
 
-# Function to report an IP to AbuseIPDB
+# Report to AbuseIpDB
 report_ip_to_abuseipdb() {
     local response
     response=$(curl --fail -s 'https://api.abuseipdb.com/api/v2/report' \
@@ -205,23 +212,23 @@ report_ip_to_abuseipdb() {
 
     # API call fail
     if [[ $? -ne 0 ]]; then
-        log_message "Aborting due to API failure when reporting IP. Response: ${response}"
+        log_message "ERROR REPORT: API failure. Response: ${response}"
         exit 1
     else
-        log_message "Reported IP ${IP} to AbuseIPDB. Local list updated."
+        log_message "SUCCESS REPORT: Reported IP ${IP} to AbuseIPDB. Local list updated."
     fi
 }
 
-# Should Ban IP
-if grep -q -E "^IP=${IP} L=[0-9\-]+" "${REPORTED_IP_LIST_FILE}"; then
-    # IP is already reported, check if it's still listed on AbuseIPDB
+# Check if IP is already reported and still listed on AbuseIPDB
+if grep -q -E "^IP=${IP}[[:space:]]+L=[0-9\-]+" "${REPORTED_IP_LIST_FILE}"; then
+    # IP found locally, check if it's still listed on AbuseIPDB
     if check_ip_in_abuseipdb; then
         # IP is still listed on AbuseIPDB, no need to report again
-        log_message "IP ${IP} has already been reported and remains on AbuseIPDB. No duplicate report made."
+        log_message "INFO: IP ${IP} has already been reported and remains on AbuseIPDB. No duplicate report made."
         shouldBanIP=0
     else
-        # IP is already reported before but not listed on AbuseIPDB, report it again
-        log_message "IP ${IP} has already been reported but is no longer listed on AbuseIPDB. Reporting it again."
+        # IP is reported before but not listed on AbuseIPDB, report it again
+        log_message "INFO: IP ${IP} has already been reported but is no longer listed on AbuseIPDB. Reporting it again."
         shouldBanIP=1
         is_found_local=1
     fi
@@ -230,20 +237,15 @@ else
     shouldBanIP=1
 fi
 
-# Report to AbuseIPDB
+# Report to AbuseIpdb
 if [[ "${shouldBanIP}" -eq 1 ]]; then
     # Add the new ban entry to local list kindly
     if [[ "${is_found_local}" -eq 0 ]]; then
-        # Open with read/write access
-        exec 200<> "${REPORTED_IP_LIST_FILE}"
-        # Lock
-        flock -x 200
-        # Write
-        echo "IP=${IP} L=${BANTIME}" >> "${REPORTED_IP_LIST_FILE}"
-        # Release the lock (Maybe redundant)
-        flock -u 200
-        # Close the file descriptor
-        exec 200>&-
+        exec 200<> "${REPORTED_IP_LIST_FILE}"                      # Open with read/write access
+        flock -x 200                                               # Lock
+        echo "IP=${IP} L=${BANTIME}" >> "${REPORTED_IP_LIST_FILE}" # Write
+        flock -u 200                                               # Release the lock
+        exec 200>&-                                                # Close the file descriptor
     fi
 
     # Report IP
