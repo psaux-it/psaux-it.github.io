@@ -25,7 +25,7 @@
 #     tp_comment = Fail2Ban - NGINX bad requests 400-401-403-404-444, high level vulnerability scanning, commonly xmlrpc_attack, wp-login brute force, excessive crawling/scraping
 #     maxretry   = 3
 #     findtime   = 1d
-#     bantime    = 7200 (Caution: Must be numeric)
+#     bantime    = 7200
 #     action     = %(action_mwl)s
 #                  %(action_abuseipdb)s[matches="%(tp_comment)s", abuseipdb_apikey="YOUR_API_KEY", abuseipdb_category="21,15", bantime="%(bantime)s"]
 #
@@ -134,7 +134,7 @@ fi
 # Check runtime dependencies
 dependencies=("curl" "jq" "flock")
 for dep in "${dependencies[@]}"; do
-    if ! command -v "$dep" &>/dev/null; then
+    if ! command -v "${dep}" &>/dev/null; then
         log_message "FATAL: -${dep} is not installed. Please install -${dep} to proceed."
         exit 1
     fi
@@ -221,7 +221,7 @@ report_ip_to_abuseipdb() {
     fi
 }
 
-# Check if IP is already reported and still listed on AbuseIPDB
+# Should Ban IP
 if grep -m 1 -q -E "^IP=${IP}[[:space:]]+L=[0-9\-]+" "${REPORTED_IP_LIST_FILE}"; then
     # IP found locally, check if it's still listed on AbuseIPDB
     if check_ip_in_abuseipdb; then
