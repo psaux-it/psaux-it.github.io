@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Description:
-#   This script serves as a Fail2Ban `actionban` to report offending IP addresses to AbuseIPDB.
+#   This script serves as a Fail2Ban `actionban` to report offending IP addresses to AbuseIPDB with custom COMMENTS.
 #   Mainly whenever Fail2Ban restarts, it calls the actionban function for each IP stored in the database file.
 #   If you restart your server often this script prevents duplicate reporting to AbuseIPDB by maintaining a local list of already reported IPs.
 #   Before reporting, it checks both the local list and AbuseIPDB to ensure the IP hasn't
@@ -13,7 +13,8 @@
 #   - First edit 'abuseipdb.conf' in '/etc/fail2ban/action.d/abuseipdb.conf' and add following rule,
 #   - actionban = /etc/fail2ban/action.d/abuseipdb_fail2ban_actionban.sh \
 #         "<abuseipdb_apikey>" "<matches>" "<ip>" "<abuseipdb_category>" "<bantime>"
-#   - Adjust your jails accordingly. Check the below jail example to also reporting with custom comment via  'tp_comment'
+#   - Also make sure you set your 'abuseipdb_apikey' in the configuration file.
+#   - Final step, adjust your jails accordingly. Check the below jail example to also reporting with custom comment via  'tp_comment'
 #
 #   Example jail in 'jail.local':
 #     [nginx-botsearch]
@@ -66,10 +67,13 @@
 #
 # General Considerations:
 #   - The script does not interact with or rely on Fail2Ban’s SQLite database, as the Fail2ban database setup can vary across different environments.
-#   - The script performs two API calls to AbuseIPDB in every ban action in order to determine whether the banned IP should be reported,
-#   - first call /v2/check and second to /v2/report endpoint. So your daily limits not affected check/report endpoints has seperate daily limits
-#   - When multiple instances of the script try to write to the REPORTED_IP_LIST_FILE concurrently we need to prevent data corruption. flock used for that reason.
-#   - Never delete, truncate or try to sync REPORTED_IP_LIST_FILE with Fail2ban SQLite. Even you reset fail2ban SQLite, continue to keep REPORTED_IP_LIST_FILE same, we always rely on our local list.
+#   - The script performs two API calls to AbuseIPDB for each ban action in order to determine whether the IP should be reported.
+#   - First Call:  /v2/check → Checks if the IP is already reported.
+#   - Second Call: /v2/report → Reports the IP if necessary.
+#   - These two endpoints have separate daily limits, so does not affect your reporting quota.
+#   - When multiple instances of the script try to write to the REPORTED_IP_LIST_FILE concurrently we need to prevent data corruption. 'flock' used for that reason.
+#   - Never delete, truncate or try to sync REPORTED_IP_LIST_FILE with Fail2ban SQLite.
+#   - Even you reset fail2ban SQLite, continue to keep REPORTED_IP_LIST_FILE same, It serves as the script’s local tracking system.
 #   - When you go production keep watching '/var/log/abuseipdb-report.log' for any abnormal fails.
 #
 # Return Codes:
