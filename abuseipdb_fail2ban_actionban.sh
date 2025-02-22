@@ -140,7 +140,7 @@ fi
 
 # Check if the IP is listed on AbuseIPDB
 check_ip_in_abuseipdb() {
-    local response http_status body exit_code total_reports error_detail
+    local response http_status body total_reports error_detail
     local delimiter="HTTP_STATUS:"
 
     # Perform the API call and capture both response and HTTP status
