@@ -62,7 +62,7 @@
 # Dependencies:
 #   - curl: For making API requests to AbuseIPDB.
 #   - jq: For parsing JSON responses.
-#   - grep: For searching within the local reported IP list.
+#   - flock: Prevent data corruption.
 #
 # General Considerations:
 #   - The script does not interact with or rely on Fail2Ban’s SQLite database, as the Fail2ban database setup can vary across different environments.
