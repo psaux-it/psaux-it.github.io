@@ -57,7 +57,7 @@
 #
 # Configurations (Need to set):
 #   - REPORTED_IP_LIST_FILE: Path to the local file storing reported IPs and their ban times.
-#   - LOG_FILE: Path to the log file where actions and outcomes are recorded.
+#   - LOG_FILE: Path to the log file where actions and events are recorded.
 #
 # Dependencies:
 #   - curl: For making API requests to AbuseIPDB.
