@@ -128,15 +128,13 @@ if [[ ! -w "${REPORTED_IP_LIST_FILE}" ]]; then
 fi
 
 # Check runtime dependencies
-if ! command -v curl &>/dev/null; then
-    log_message "'curl' is not installed. Please install 'curl' to proceed."
-    exit 1
-fi
-
-if ! command -v jq &>/dev/null; then
-    log_message "'jq' is not installed. Please install 'jq' to proceed."
-    exit 1
-fi
+dependencies=("curl" "jq" "flock")
+for dep in "${dependencies[@]}"; do
+    if ! command -v "$dep" &>/dev/null; then
+        log_message "FATAL: -${dep} is not installed. Please install -${dep} to proceed."
+        exit 1
+    fi
+done
 
 # Check if the IP is listed on AbuseIPDB
 check_ip_in_abuseipdb() {
@@ -220,7 +218,7 @@ report_ip_to_abuseipdb() {
 }
 
 # Check if IP is already reported and still listed on AbuseIPDB
-if grep -q -E "^IP=${IP}[[:space:]]+L=[0-9\-]+" "${REPORTED_IP_LIST_FILE}"; then
+if grep -m 1 -q -E "^IP=${IP}[[:space:]]+L=[0-9\-]+" "${REPORTED_IP_LIST_FILE}"; then
     # IP found locally, check if it's still listed on AbuseIPDB
     if check_ip_in_abuseipdb; then
         # IP is still listed on AbuseIPDB, no need to report again
