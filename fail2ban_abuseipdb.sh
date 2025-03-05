@@ -305,13 +305,13 @@ convert_bantime() {
     [[ -z "$time_unit" ]] && time_unit="s"
 
     case "$time_unit" in
-        s) return $time_value ;;
-        m) return $((time_value * 60)) ;;
-        h) return $((time_value * 3600)) ;;
-        d) return $((time_value * 86400)) ;;
-        w) return $((time_value * 604800)) ;;
-        y) return $((time_value * 31536000)) ;;
-        *) return $time_value ;;
+        s) echo "$time_value" ;;
+        m) echo "$((time_value * 60))" ;;
+        h) echo "$((time_value * 3600))" ;;
+        d) echo "$((time_value * 86400))" ;;
+        w) echo "$((time_value * 604800))" ;;
+        y) echo "$((time_value * 31536000))" ;;
+        *) echo "$time_value" ;;
     esac
 }
 
