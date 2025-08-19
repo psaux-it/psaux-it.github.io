@@ -7,6 +7,15 @@ INSTALL_PATH="${INSTALL_PATH:-/usr/local/bin/safexec}"
 ALLOW_NOSUID="${ALLOW_NOSUID:-0}"        # set to 1 to allow install on nosuid fs (will run without setuid)
 SKIP_CHECKSUM="${SKIP_CHECKSUM:-0}"      # set to 1 to skip checksum verification even if available
 
+# ---- Colors & UI (auto-disable on non-TTY or NO_COLOR; FORCE_COLOR=1 to force) ----
+if { [ -t 1 ] || [ "${FORCE_COLOR:-0}" = "1" ]; } \
+   && [ -z "${NO_COLOR:-}" ] \
+   && [ "${TERM:-dumb}" != "dumb" ]; then
+  BOLD="$(printf '\033[1m')"; CYAN="$(printf '\033[36m')"; RESET="$(printf '\033[0m')"
+else
+  BOLD=; CYAN=; RESET=
+fi
+
 # ---- Helpers ----
 die()  { printf >&2 "Error: %s\n" "$*"; exit 1; }
 warn() { printf >&2 "Warning: %s\n" "$*"; }
@@ -41,7 +50,7 @@ fs_has_nosuid() {
   [ -n "$opts" ] && printf "%s" "$opts" | tr ',' '\n' | grep -qx nosuid
 }
 
-# Portable dirname->abs path (avoid realpath -m)
+# Portable dirname->abs path
 dir_abs() {
   _d="$1"
   [ -z "$_d" ] && _d=.
@@ -54,14 +63,16 @@ is_linux || die "this installer is Linux-only"
 for c in uname curl chmod chown awk grep sed stat mv mkdir; do
   need_cmd "$c"
 done
-# Optional but preferred for arch sanity check:
+
+# arch sanity check:
 if command -v file >/dev/null 2>&1; then
   HAVE_FILE=1
 else
   HAVE_FILE=0
   warn "'file' command not found; skipping ELF/arch sanity check"
 fi
-# Optional: sha256 verification if checksum file is present upstream
+
+# sha256 verification if checksum file is present upstream
 if command -v sha256sum >/dev/null 2>&1; then
   HAVE_SHA=1
 else
@@ -106,7 +117,7 @@ tmp="$(mktemp)"
 tmp_sha=""
 trap 'rm -f "$tmp" "$tmp_sha"' EXIT
 
-echo "Fetching ${URL_BIN} ..."
+echo "Fetching ${BOLD}${CYAN}safexec${RESET} ..."
 curl -fsSL "$URL_BIN" -o "$tmp" || die "download failed: ${URL_BIN}"
 
 # Optional checksum verify (only if available and not skipped)
@@ -171,4 +182,4 @@ else
 fi
 [ -r /sys/fs/cgroup/cgroup.controllers ] && echo "  cgroup v2:   yes" || echo "  cgroup v2:   no"
 ( getent passwd nobody >/dev/null 2>&1 || id -u nobody >/dev/null 2>&1 ) && echo "  nobody user: yes" || echo "  nobody user: no"
-echo "Done."
+echo "Installed."
