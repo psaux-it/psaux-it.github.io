@@ -21,7 +21,7 @@
 
 # SCRIPT DESCRIPTION:
 # -------------------
-# This script is written for "FastCGI Cache Purge and Preload for Nginx"
+# This script is written for "Nginx Cache Purge Preload"
 #
 # NPP - Wordpress Plugin.
 # URL: https://wordpress.org/plugins/fastcgi-cache-purge-and-preload-nginx/
@@ -577,7 +577,14 @@ fi
 detect_nginx_conf() {
   local DEFAULT_NGINX_CONF_PATHS=(
     "/etc/nginx/nginx.conf"
+    "/usr/local/etc/nginx/nginx.conf"
+    "/etc/nginx/conf/nginx.conf"
     "/usr/local/nginx/conf/nginx.conf"
+    "/usr/local/etc/nginx/conf/nginx.conf"
+    "/usr/local/etc/nginx.conf"
+    "/opt/nginx/conf/nginx.conf"
+    "/www/server/nginx/conf/nginx.conf"
+    "/etc/nginx/conf.d/ea-nginx.conf"
   )
 
   for path in "${DEFAULT_NGINX_CONF_PATHS[@]}"; do
@@ -642,26 +649,28 @@ apply_read_permission_to_nginx_files() {
   done
 }
 
-# Function to extract FastCGI cache paths from NGINX configuration files
+# Function to extract Nginx cache paths from configuration files
 extract_fastcgi_cache_paths() {
   {
     # Extract paths from directly nginx.conf
-    grep -E "^\s*fastcgi_cache_path\s+" "${NGINX_CONF}" | awk '{print $2}'
+	grep -E "^\s*(fastcgi_cache_path|proxy_cache_path|scgi_cache_path|uwsgi_cache_path)\s+" "${NGINX_CONF}" | awk '{print $2}'
 
     # Also get included paths to nginx.conf and extract fastcgi cache paths
     while IFS= read -r include_line; do
       include_path=$(echo "${include_line}" | awk '{print $2}')
+	  target_dir=""
+
       # Check wildcard for multiple files
       if [[ "${include_path}" == *"*"* ]]; then
         # Remove wildcard, slash, get the exact path
         target_dir=$(echo "${include_path}" | sed 's/\*.*//' | sed 's/\/$//')
       else
         # This is a directly included single file
-        grep -E "^\s*fastcgi_cache_path\s+" "${include_path}" | awk '{print $2}'
+		grep -E "^\s*(fastcgi_cache_path|proxy_cache_path|scgi_cache_path|uwsgi_cache_path)\s+" "${include_path}" | awk '{print $2}'
       fi
-      # Search for fastcgi_cache_path in the target directory recursively
-      if [ -d "${target_dir}" ]; then
-        find -L "${target_dir}" -type f -exec grep -H "fastcgi_cache_path" {} + | awk -F: '{print $2":"$3}' | sed '/^\s*#/d' | awk '{print $2}'
+      # Search for cache paths in the target directory recursively
+	  if [[ -n "${target_dir}" && -d "${target_dir}" ]]; then
+        find -L "${target_dir}" -type f -exec grep -E "^\s*(fastcgi_cache_path|proxy_cache_path|scgi_cache_path|uwsgi_cache_path)\s+" {} + | awk -F: '{print $2":"$3}' | sed '/^\s*#/d' | awk '{print $2}'
       fi
     done < <(grep -E "^\s*include\s+" "${NGINX_CONF}" | grep -v "^\s*#" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/;//')
   } | sort | uniq
@@ -767,9 +776,10 @@ if ! [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Get nginx.conf
   detect_nginx_conf
 
-  # Extract FastCGI Cache Paths from nginx.conf
+  # Extract Cache Paths from nginx.conf
   FASTCGI_CACHE_PATHS=()
   while IFS= read -r path; do
+    path="${path%/}"
     FASTCGI_CACHE_PATHS+=("${path}")
   done < <(extract_fastcgi_cache_paths)
 
@@ -975,7 +985,10 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
     user=$(echo "${line}" | awk '{print $1}')
     cache_path=$(echo "${line}" | awk '{print $2}')
 
-    # Validate the Nginx FastCGI cache path
+	# Normalize: remove trailing slash, e.g. /var/cache/nginx/ → /var/cache/nginx
+    cache_path="${cache_path%/}"
+
+    # Validate the Nginx cache path
     if ! validate_cache_paths "${cache_path}"; then
       echo -e "\033[33mFor safety, paths such as '/home' and other critical system paths are prohibited in default. Please use directories '/dev' | '/var' | '/tmp' | '/opt' must have at least one level deeper.\033[0m"
       echo -e "\e[91mError: \e[0m\e[96mExcluded: \033[0;31mForbidden Nginx Cache Path: \033[1;33m${cache_path}\033[0m"
@@ -1016,6 +1029,7 @@ if [[ -f "${this_script_path}/manual-configs.nginx" ]]; then
   # Check if manual-configs.nginx before populating the array, otherwise all excluded?
   if [[ -s "${this_script_path}/manual-configs.nginx" ]]; then
     while read -r user path; do
+	  path="${path%/}"
       if [[ -z "${fcgi[$user]}" ]]; then
         fcgi["${user}"]="${path}"
       else
@@ -1175,10 +1189,10 @@ fuse-mount() {
     for path in "${paths[@]}"; do
       if mount | grep -q "${path}" >/dev/null 2>&1; then
         mount_point=$(mount | grep "${path}" | awk -F ' on | type ' '{print $2}')
-        messages+=("All done! Nginx FastCGI Cache Path: (${path}) mounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user}), with altered permissions.")
+        messages+=("All done! Nginx Cache Path: (${path}) mounted on FUSE at: (${mount_point}) for PHP-FPM-USER: (${user}), with altered permissions.")
         (( instance_count++ ))
       else
-        messages+=("CANNOT mount the Nginx FastCGI Cache Path: (${path}) on FUSE at: (${path}-npp) for PHP-FPM-USER: (${user}), with altered permissions.")
+        messages+=("CANNOT mount the Nginx Cache Path: (${path}) on FUSE at: (${path}-npp) for PHP-FPM-USER: (${user}), with altered permissions.")
       fi
     done
   done
